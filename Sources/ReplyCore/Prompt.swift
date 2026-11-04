@@ -40,30 +40,43 @@ public struct ReplyPrompt: Sendable {
         var projectExcerpts: [Document]
     }
 
-    public init(
-        source: String, brief: String = "", voiceNotes: String = "", samples: [VoiceSample] = [],
-        project: Project? = nil, length: ReplyLength = .short
-    ) {
-        let samples = samples.lazy
+    private static func selectSamples(_ samples: [VoiceSample]) -> [String] {
+        Array(samples.lazy
             .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-            .prefix(Self.maxSamples)
-            .map { String($0.prefix(Self.maxSample)) }
+            .prefix(maxSamples)
+            .map { String($0.prefix(maxSample)) })
+    }
 
-        var remaining = Self.maxContext
+    private static func selectExcerpts(_ project: Project?) -> [Input.Document] {
+        var remaining = maxContext
         var documents: [Input.Document] = []
         for doc in project?.documents ?? [] where remaining > 0 {
-            let excerpt = String(doc.text.prefix(min(Self.maxExcerpt, remaining)))
+            let excerpt = String(doc.text.prefix(min(maxExcerpt, remaining)))
             guard !excerpt.isEmpty else { continue }
             documents.append(.init(name: String(doc.name.prefix(160)), excerpt: excerpt))
             remaining -= excerpt.count
         }
+        return documents
+    }
+
+    /// Counts what a draft would include without building or encoding the full prompt.
+    public static func contextCounts(samples: [VoiceSample], project: Project?) -> (samples: Int, documents: Int) {
+        (selectSamples(samples).count, selectExcerpts(project).count)
+    }
+
+    public init(
+        source: String, brief: String = "", voiceNotes: String = "", samples: [VoiceSample] = [],
+        project: Project? = nil, length: ReplyLength = .short
+    ) {
+        let samples = Self.selectSamples(samples)
+        let documents = Self.selectExcerpts(project)
 
         let payload = Input(
             comment: String(source.prefix(Self.maxSource)),
             replyBrief: String(brief.prefix(Self.maxNotes)),
             voiceNotes: String(voiceNotes.prefix(Self.maxNotes)),
-            voiceSamples: Array(samples),
+            voiceSamples: samples,
             projectName: project.map { String($0.name.prefix(120)) },
             projectExcerpts: documents
         )

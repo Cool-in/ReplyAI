@@ -90,24 +90,33 @@ struct DeskButton: ButtonStyle {
                 .foregroundStyle(kind == .primary ? desk.onAccent : kind == .quiet ? desk.muted : desk.text)
                 .padding(.horizontal, kind == .primary ? 15 : 11)
                 .frame(minHeight: kind == .primary ? 38 : 34)
-                .background(fill, in: RoundedRectangle(cornerRadius: 8))
+                .background(fill, in: RoundedRectangle(cornerRadius: 9))
                 .overlay {
                     if kind == .secondary {
-                        RoundedRectangle(cornerRadius: 8).strokeBorder(desk.line, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 9).strokeBorder(desk.line, lineWidth: 1)
                             .allowsHitTesting(false)
                     }
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .shadow(
+                    color: kind == .primary && enabled ? desk.accentButton.opacity(0.25) : .clear,
+                    radius: 6, y: 2
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 9))
                 .opacity(enabled ? 1 : 0.44)
                 .onHover { hovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
         }
 
-        private var fill: Color {
+        private var fill: AnyShapeStyle {
             if kind == .primary {
-                return desk.accentButton.opacity(configuration.isPressed ? 0.78 : hovering ? 0.90 : 1)
+                let top = desk.accentButton.opacity(configuration.isPressed ? 0.78 : hovering ? 0.92 : 1)
+                return AnyShapeStyle(LinearGradient(
+                    colors: [top, top.opacity(0.9)], startPoint: .top, endPoint: .bottom
+                ))
             }
-            if configuration.isPressed || hovering { return desk.wash }
-            return kind == .secondary ? desk.paper : .clear
+            if configuration.isPressed || hovering { return AnyShapeStyle(desk.wash) }
+            return AnyShapeStyle(kind == .secondary ? desk.paper : Color.clear)
         }
     }
 }
@@ -136,8 +145,14 @@ struct Panel<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(desk.paper, in: RoundedRectangle(cornerRadius: 14))
-            .shadow(color: .black.opacity(desk.dark ? 0.10 : 0.04), radius: 7, y: 3)
+            .background(desk.paper, in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(desk.line.opacity(desk.dark ? 0.7 : 0.55), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(desk.dark ? 0.16 : 0.05), radius: 14, y: 6)
+            .shadow(color: .black.opacity(desk.dark ? 0.10 : 0.03), radius: 2, y: 1)
     }
 }
 
@@ -175,6 +190,7 @@ struct WritingField: View {
                     .allowsHitTesting(false)
             }
         }
+        .animation(.easeOut(duration: 0.12), value: focused)
     }
 }
 

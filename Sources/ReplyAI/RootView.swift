@@ -32,6 +32,7 @@ struct RootView: View {
                         case .help: HelpView(model: model, openQuickReply: openQuickReply)
                         }
                     }
+                    .animation(.easeOut(duration: 0.18), value: model.section)
                     .frame(maxWidth: model.section == .reply ? 1060 : 780, alignment: .leading)
                     .padding(.horizontal, margin)
                     .padding(.top, 52)
@@ -164,6 +165,8 @@ private struct RailLink: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
+        .animation(.easeOut(duration: 0.14), value: selected)
+        .animation(.easeOut(duration: 0.12), value: hover)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

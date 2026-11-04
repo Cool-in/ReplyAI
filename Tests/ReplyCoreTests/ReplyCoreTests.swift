@@ -120,3 +120,19 @@ private func file(_ name: String, _ text: String, in directory: URL) throws -> U
     #expect(throws: DecodingError.self) { try store.load() }
     #expect(try String(contentsOf: url, encoding: .utf8) == "broken JSON")
 }
+
+@Test func contextCountsMatchTheFullPrompt() {
+    var project = Project(name: "App")
+    project.documents = [
+        ProjectDocument(name: "A.md", text: "First"),
+        ProjectDocument(name: "B.md", text: ""),
+        ProjectDocument(name: "C.md", text: "Third")
+    ]
+    let samples = [VoiceSample(text: " "), VoiceSample(text: "Happy to help."), VoiceSample(text: "Thanks!")]
+    let counts = ReplyPrompt.contextCounts(samples: samples, project: project)
+    let prompt = ReplyPrompt(source: "Question", samples: samples, project: project)
+    #expect(counts.samples == prompt.sampleCount)
+    #expect(counts.documents == prompt.documentCount)
+    #expect(counts.samples == 2)
+    #expect(counts.documents == 2)
+}

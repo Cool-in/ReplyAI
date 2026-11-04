@@ -134,6 +134,7 @@ struct ComposerView: View {
                             Image(systemName: "quote.closing")
                                 .font(.system(size: 25, weight: .light))
                                 .foregroundStyle(desk.violet)
+                                .symbolEffect(.pulse, isActive: model.isGenerating)
                                 .padding(.bottom, 2)
                             Text(model.isGenerating ? "Writing your reply…" : "Room for your reply")
                                 .font(.system(size: 25, design: .serif))

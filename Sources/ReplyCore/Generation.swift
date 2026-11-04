@@ -68,19 +68,21 @@ public struct HTTPGenerator: ReplyGenerating {
     private let key: String?
     private let session: URLSession
 
+    /// One shared session, so repeat drafts reuse the open connection instead of
+    /// paying for a new TLS handshake every time.
+    private static let sharedSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.httpShouldSetCookies = false
+        config.timeoutIntervalForRequest = 90
+        config.timeoutIntervalForResource = 120
+        return URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
+    }()
+
     public init(settings: Settings, key: String? = nil, session: URLSession? = nil) {
         self.settings = settings
         self.key = key
-        if let session {
-            self.session = session
-        } else {
-            let config = URLSessionConfiguration.ephemeral
-            config.urlCache = nil
-            config.httpShouldSetCookies = false
-            config.timeoutIntervalForRequest = 90
-            config.timeoutIntervalForResource = 120
-            self.session = URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
-        }
+        self.session = session ?? Self.sharedSession
     }
 
     public func generate(_ prompt: ReplyPrompt) async throws -> String {
