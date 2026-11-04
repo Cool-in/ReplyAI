@@ -1,0 +1,222 @@
+import AppKit
+import Observation
+import ReplyCore
+
+enum Section: String, CaseIterable, Identifiable {
+    case reply = "Reply", voice = "My voice", projects = "Projects", settings = "Settings", help = "How to Use"
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .reply: "bubble.left.and.bubble.right"
+        case .voice: "waveform"
+        case .projects: "folder"
+        case .settings: "gearshape"
+        case .help: "questionmark.circle"
+        }
+    }
+}
+
+@MainActor @Observable
+final class AppModel {
+    static let shared = AppModel()
+
+    var library = Library()
+    var section: Section? = .reply
+    var source = ""
+    var brief = ""
+    var draft = ""
+    var length: ReplyLength = .short
+    var selectedProjectID: UUID?
+    var demo = false
+    var draftIsDemo = false
+    var isGenerating = false
+    var errorMessage: String?
+    var storageError: String?
+    var copied = false
+    var pendingSource: String?
+    var keySaved = false
+    var importedSource = false
+    var showWindow: (() -> Void)?
+    var isOverlayVisible = false
+    var shortcutRegistrationStatus: Int32?
+    private var request: Task<Void, Never>?
+    private let store: LibraryStore?
+    private var canSave = true
+
+    init() {
+        if ProcessInfo.processInfo.arguments.contains("--temporary-library") {
+            store = nil
+        } else {
+            store = LibraryStore(file: URL.applicationSupportDirectory
+                .appending(path: "ReplyAI", directoryHint: .isDirectory)
+                .appending(path: "Library.json"))
+        }
+        do {
+            if let store { library = try store.load() }
+        } catch {
+            canSave = false
+            storageError = "The saved library could not be read. Changes are temporary until you recover or move Library.json."
+        }
+        checkKey()
+    }
+
+    var hasSource: Bool { !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var hasDraft: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var project: Project? { library.projects.first { $0.id == selectedProjectID } }
+
+    var hasConfiguredModel: Bool {
+        !library.settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (library.settings.provider == .ollama || keySaved)
+    }
+
+    var generationDestination: String {
+        if demo { return "On this Mac · Demo" }
+        let provider = library.settings.provider
+        return provider == .ollama ? "Ollama on this Mac" : provider.title
+    }
+
+    var generationContext: String {
+        let prompt = prompt
+        return "\(prompt.sampleCount) \(prompt.sampleCount == 1 ? "sample" : "samples") · \(prompt.documentCount) \(prompt.documentCount == 1 ? "excerpt" : "excerpts")"
+    }
+
+    var prompt: ReplyPrompt {
+        ReplyPrompt(
+            source: source, brief: brief,
+            voiceNotes: demo ? "" : library.voiceNotes,
+            samples: demo ? Self.demoSamples : library.samples,
+            project: demo ? Self.demoProject : project, length: length
+        )
+    }
+
+    func save() {
+        guard canSave else { return }
+        do {
+            try store?.save(library)
+            storageError = nil
+        } catch {
+            storageError = "Could not save your library. Check the app’s Application Support folder."
+        }
+    }
+
+    func checkKey() {
+        let provider = library.settings.provider
+        keySaved = provider != .ollama && Keychain.exists(provider)
+    }
+
+    func pasteSource() {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            errorMessage = "The clipboard doesn’t contain text."
+            return
+        }
+        acceptSelection(text)
+    }
+
+    func acceptSelection(_ text: String) {
+        section = .reply
+        if text == source {
+            pendingSource = nil
+            return
+        }
+        if hasSource || hasDraft || isGenerating {
+            pendingSource = text
+        } else {
+            replaceSource(text)
+        }
+    }
+
+    func replaceSource(_ text: String) {
+        cancel()
+        demo = false
+        draftIsDemo = false
+        source = text
+        brief = ""
+        draft = ""
+        copied = false
+        errorMessage = nil
+        pendingSource = nil
+        importedSource = true
+    }
+
+    func loadDemo() {
+        cancel()
+        demo = true
+        draftIsDemo = false
+        importedSource = false
+        source = "Does Trailnote keep working if I lose signal out on the trail?"
+        brief = "Reassure them and explain what happens when they reconnect."
+        draft = ""
+        errorMessage = nil
+        copied = false
+        section = .reply
+    }
+
+    func clear() {
+        replaceSource("")
+        importedSource = false
+    }
+
+    func generate() {
+        guard hasSource, !isGenerating else { return }
+        guard source.count <= ReplyPrompt.maxSource, brief.count <= ReplyPrompt.maxNotes else {
+            errorMessage = "Shorten the comment or reply brief before generating."
+            return
+        }
+        let prompt = prompt
+        let settings = library.settings
+        let isDemo = demo
+        errorMessage = nil
+        copied = false
+        isGenerating = true
+        request = Task {
+            do {
+                let output: String
+                if isDemo {
+                    try await Task.sleep(for: .milliseconds(320))
+                    output = "Yep! Trailnote keeps your notes on your Mac while you’re offline. They’ll sync when you’re back online, so you can keep writing even if you lose signal."
+                } else {
+                    let key = settings.provider == .ollama ? nil : try Keychain.read(settings.provider)
+                    output = try await HTTPGenerator(settings: settings, key: key).generate(prompt)
+                }
+                try Task.checkCancellation()
+                draft = output
+                draftIsDemo = isDemo
+                isGenerating = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                isGenerating = false
+                if let error = error as? URLError {
+                    errorMessage = error.code == .timedOut ? "The request timed out. Try again or choose a faster model."
+                        : "Could not reach \(settings.provider.title). Check your connection or make sure Ollama is running."
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func cancel() {
+        request?.cancel()
+        request = nil
+        isGenerating = false
+    }
+
+    func copyDraft() {
+        guard hasDraft else { return }
+        NSPasteboard.general.clearContents()
+        copied = NSPasteboard.general.setString(draft, forType: .string)
+        if !copied { errorMessage = "Could not copy the draft to the clipboard." }
+    }
+
+    static let demoSamples = [
+        VoiceSample(text: "Yep! You can start with the basics and tweak it as you go."),
+        VoiceSample(text: "Happy to help. The quickest way is to save your route first, then start a new note.")
+    ]
+
+    static var demoProject: Project {
+        var project = Project(name: "Trailnote")
+        project.documents = [.init(name: "About Trailnote.txt", text: "Trailnote is a fictional Mac hiking journal. Notes are saved locally when offline and sync when internet access returns.")]
+        return project
+    }
+}

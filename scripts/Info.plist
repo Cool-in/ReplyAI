@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>dev.replyai.mac</string>
+  <key>CFBundleName</key><string>ReplyAI</string>
+  <key>CFBundleDisplayName</key><string>ReplyAI</string>
+  <key>CFBundleExecutable</key><string>ReplyAI</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>127.0.0.1</key>
+      <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+    </dict>
+  </dict>
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict><key>default</key><string>Draft Reply with ReplyAI</string></dict>
+      <key>NSMessage</key><string>draftReply</string>
+      <key>NSPortName</key><string>ReplyAI</string>
+      <key>NSRequiredContext</key><dict/>
+      <key>NSServiceDescription</key><string>Open selected text in the ReplyAI Quick Reply panel.</string>
+      <key>NSSendTypes</key>
+      <array><string>public.utf8-plain-text</string><string>NSStringPboardType</string></array>
+    </dict>
+  </array>
+</dict>
+</plist>
