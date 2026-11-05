@@ -41,6 +41,8 @@ final class AppModel {
     var isOverlayVisible = false
     var shortcutRegistrationStatus: Int32?
     private var request: Task<Void, Never>?
+    private var pendingSave: Task<Void, Never>?
+    private var dirty = false
     private let store: LibraryStore?
     private var canSave = true
 
@@ -77,8 +79,11 @@ final class AppModel {
     }
 
     var generationContext: String {
-        let prompt = prompt
-        return "\(prompt.sampleCount) \(prompt.sampleCount == 1 ? "sample" : "samples") · \(prompt.documentCount) \(prompt.documentCount == 1 ? "excerpt" : "excerpts")"
+        let counts = ReplyPrompt.contextCounts(
+            samples: demo ? Self.demoSamples : library.samples,
+            project: demo ? Self.demoProject : project
+        )
+        return "\(counts.samples) \(counts.samples == 1 ? "sample" : "samples") · \(counts.documents) \(counts.documents == 1 ? "excerpt" : "excerpts")"
     }
 
     var prompt: ReplyPrompt {
@@ -90,10 +95,26 @@ final class AppModel {
         )
     }
 
+    /// Queues a save. Rapid edits collapse into one write shortly after typing stops.
     func save() {
-        guard canSave else { return }
+        guard canSave, store != nil else { return }
+        dirty = true
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.flushSave()
+        }
+    }
+
+    /// Writes any queued changes right away. Called on quit so nothing is lost.
+    func flushSave() {
+        pendingSave?.cancel()
+        pendingSave = nil
+        guard dirty, canSave, let store else { return }
+        dirty = false
         do {
-            try store?.save(library)
+            try store.save(library)
             storageError = nil
         } catch {
             storageError = "Could not save your library. Check the app’s Application Support folder."
