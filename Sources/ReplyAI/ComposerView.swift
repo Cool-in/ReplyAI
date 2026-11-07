@@ -255,9 +255,12 @@ struct GenerateReplyControl: View {
             Button("Cancel") { model.cancel() }
                 .buttonStyle(DeskButton())
         } else if model.hasConfiguredModel || model.demo {
-            Button("Generate Reply", systemImage: "sparkles") { model.generate() }
+            Button(model.hasDraft ? "Regenerate" : "Generate Reply",
+                   systemImage: model.hasDraft ? "arrow.clockwise" : "sparkles") { model.generate() }
                 .buttonStyle(DeskButton(kind: .primary))
+                .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!model.hasSource)
+                .help("Generate a reply (⌘Return)")
         } else {
             Button("Set Up a Model", systemImage: "arrow.up.right", action: openSettings)
                 .buttonStyle(DeskButton(kind: .primary))

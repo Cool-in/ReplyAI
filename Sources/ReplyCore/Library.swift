@@ -16,7 +16,7 @@ public enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
     public var exampleModel: String {
         switch self {
         case .openAI: "gpt-4.1-mini"
-        case .anthropic: "claude-sonnet-4-6"
+        case .anthropic: "claude-sonnet-5-5"
         case .ollama: "gemma3:4b"
         }
     }
