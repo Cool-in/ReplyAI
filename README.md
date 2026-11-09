@@ -17,7 +17,7 @@ The script builds a native app for this Mac, packages the text Service, and sign
 
 1. **Set up your writing desk.** Choose a provider and model in **Settings**. Save an API key for a cloud provider. Add a few posts or messages you wrote in **My voice**. In **Projects**, optionally review and save selected files such as a README, `CLAUDE.md`, or `AGENTS.md` for product facts.
 2. **Highlight a comment.** With ReplyAI running, select text in the other app. Choose **Services → Draft Reply with ReplyAI** in its context menu or app menu. ReplyAI opens **Quick Reply**, a floating panel over the source app. You can also press **Option + Shift + R**. The first time you use the shortcut, click **Enable Selection Access** if prompted, allow ReplyAI under **System Settings → Privacy & Security → Accessibility**, then return to the source app and retry.
-3. **Generate, edit, and copy.** Choose a project and length if useful. **Review Input** shows what will go to the model. Click **Generate Reply** or press **⌘Return** (the button becomes **Regenerate** once a draft exists), edit the draft, click **Copy Draft**, and paste it where you’re replying. **Esc** hides the panel and keeps your draft. **Open Workspace** opens the full app.
+3. **Generate, edit, and copy.** Choose a project and length if useful. **Review Input** shows what will go to the model. Click **Generate Reply** or press **⌘Return** (the button becomes **Regenerate** once a draft exists). The reply appears as it is written. Edit the draft, click **Copy Draft** or press **⇧⌘C** in the workspace, and paste it where you’re replying. If you regenerate over a draft you liked, **Previous Draft** swaps it back. A failed or cancelled request leaves your draft as it was. **Esc** hides the panel and keeps your draft. **Open Workspace** opens the full app.
 
 When an app or text field does not expose its selection, copy the comment, choose **Quick Reply** from the ReplyAI menu bar or **Open Quick Reply** in **How to Use**, then click **Paste**. Services and Paste work without the shortcut’s Accessibility permission. If the shortcut cannot register, **How to Use** in the app shows that status. If Services is missing, launch the packaged app once and check **System Settings → Keyboard → Keyboard Shortcuts → Services**.
 
@@ -27,7 +27,7 @@ Click **Try Example** in the workspace to walk through the flow with a fictional
 
 | Provider | Setup |
 | --- | --- |
-| [Ollama](https://docs.ollama.com/api/chat) | Run Ollama locally and enter the exact name of an installed local model. ReplyAI connects to `127.0.0.1:11434`. Choose a model that runs on the device to keep inference local. |
+| [Ollama](https://docs.ollama.com/api/chat) | Run Ollama locally, then pick a model under **Choose Installed Model** in Settings or enter its exact name. ReplyAI connects to `127.0.0.1:11434`. Choose a model that runs on the device to keep inference local. |
 | [OpenAI](https://platform.openai.com/docs/api-reference/responses) | Enter a model ID enabled for your API account and save its API key. ReplyAI uses the Responses API with response storage disabled. |
 | [Anthropic](https://platform.claude.com/docs/en/api/messages/create) | Enter a Claude API model ID enabled for your account and save its API key. ReplyAI uses the Messages API. |
 
