@@ -11,7 +11,7 @@ Requires macOS 14 or later and a Swift 6 toolchain. Run from this checkout:
 open "$HOME/Library/Developer/BuildCaches/ReplyAI/macos/Debug/ReplyAI/ReplyAI.app"
 ```
 
-The script builds a native app for this Mac, packages the text Service, and signs it ad hoc for local use. Quit ReplyAI before packaging a new build. Developer ID signing, notarization, and a public release are outside this prototype. For an isolated walkthrough, quit first, then open the bundle with `--args --temporary-library`. Voice and project changes made in that session disappear on quit; do not save or remove real API keys during QA.
+The script builds a native app for this Mac, packages the text Service, and signs it ad hoc for local use. Quit ReplyAI before packaging a new build. For a distributable build, run `./scripts/build-release.sh`. It makes an optimized, zipped app in `dist/`. Set `SIGN_IDENTITY` to a Developer ID Application identity and `NOTARY_PROFILE` to a notarytool keychain profile to sign and notarize it; without them the zip is only ad hoc signed and will be blocked on other Macs. For an isolated walkthrough, quit first, then open the bundle with `--args --temporary-library`. Voice and project changes made in that session disappear on quit; do not save or remove real API keys during QA.
 
 ## How to use
 
