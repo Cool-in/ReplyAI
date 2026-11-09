@@ -1,6 +1,12 @@
 # Current status
 
-ReplyAI 0.1.0 (1), native macOS SwiftPM debug bundle.
+ReplyAI 0.2.0 (2).
+
+- 0.2.0 adds streamed replies for all three providers, the provider’s own wording in error messages, a Previous Draft swap after regenerating, an installed model menu for Ollama, and a Copy Draft menu shortcut. Saves are debounced and one network session is reused.
+- 0.2.0 is verified by CI on a macOS runner: the full package builds, the Swift Testing suite passes (stream parsing, streamed requests through a stubbed session, provider error text, the Ollama model list, plus the earlier coverage), and both the debug bundle and the release zip package and pass `codesign --verify --strict`.
+- Not yet verified for 0.2.0: hands-on use of the running app. The streamed draft, Previous Draft, and the Ollama model menu have not been exercised in the UI, and no live provider request has been made.
+
+The notes below describe the 0.1.0 (1) debug bundle QA.
 
 - Stable Xcode 27.2 compiled the app for the local Mac. `plutil` passed on the app Info.plist and `codesign --verify --strict` passed on the locally signed bundle.
 - Bundle: `~/Library/Developer/BuildCaches/ReplyAI/macos/Debug/ReplyAI/ReplyAI.app`. Executable SHA-256: `73798f3e05b35f64948ea566618c355fc87449f19714421ac344d2b26b9ad212`.

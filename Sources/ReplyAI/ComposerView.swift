@@ -129,6 +129,7 @@ struct ComposerView: View {
                 ZStack {
                     WritingField(text: $model.draft, placeholder: "", label: "Editable draft",
                                  height: wide ? 242 : 176, onPaper: true)
+                        .disabled(model.isGenerating)
                     if model.draft.isEmpty {
                         VStack(spacing: 9) {
                             Image(systemName: "quote.closing")
@@ -158,6 +159,11 @@ struct ComposerView: View {
                         .foregroundStyle(desk.muted)
                         .monospacedDigit()
                     Spacer(minLength: 0)
+                    if model.previousDraft != nil && !model.isGenerating {
+                        Button("Previous Draft", systemImage: "arrow.uturn.backward") { model.restorePreviousDraft() }
+                            .buttonStyle(DeskButton(kind: .quiet))
+                            .help("Swap back to the draft from before the last generation")
+                    }
                     if model.hasSource || model.hasDraft {
                         Button("Clear") { model.clear() }
                             .buttonStyle(DeskButton(kind: .quiet))

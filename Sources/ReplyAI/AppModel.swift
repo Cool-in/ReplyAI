@@ -30,6 +30,8 @@ final class AppModel {
     var selectedProjectID: UUID?
     var demo = false
     var draftIsDemo = false
+    /// The draft that the last generation replaced, kept so it can be brought back.
+    var previousDraft: String?
     var isGenerating = false
     var errorMessage: String?
     var storageError: String?
@@ -41,6 +43,8 @@ final class AppModel {
     var isOverlayVisible = false
     var shortcutRegistrationStatus: Int32?
     private var request: Task<Void, Never>?
+    private var generationID = 0
+    private var interrupted: (draft: String, isDemo: Bool)?
     private var pendingSave: Task<Void, Never>?
     private var dirty = false
     private let store: LibraryStore?
@@ -154,6 +158,7 @@ final class AppModel {
         source = text
         brief = ""
         draft = ""
+        previousDraft = nil
         copied = false
         errorMessage = nil
         pendingSource = nil
@@ -168,6 +173,7 @@ final class AppModel {
         source = "Does Trailnote keep working if I lose signal out on the trail?"
         brief = "Reassure them and explain what happens when they reconnect."
         draft = ""
+        previousDraft = nil
         errorMessage = nil
         copied = false
         section = .reply
@@ -187,6 +193,10 @@ final class AppModel {
         let prompt = prompt
         let settings = library.settings
         let isDemo = demo
+        let before = (draft: draft, isDemo: draftIsDemo)
+        generationID += 1
+        let id = generationID
+        interrupted = before
         errorMessage = nil
         copied = false
         isGenerating = true
@@ -198,14 +208,20 @@ final class AppModel {
                     output = "Yep! Trailnote keeps your notes on your Mac while you’re offline. They’ll sync when you’re back online, so you can keep writing even if you lose signal."
                 } else {
                     let key = settings.provider == .ollama ? nil : try Keychain.read(settings.provider)
-                    output = try await HTTPGenerator(settings: settings, key: key).generate(prompt)
+                    output = try await HTTPGenerator(settings: settings, key: key).stream(prompt) { [weak self] text in
+                        await self?.showPartial(text, generation: id)
+                    }
                 }
                 try Task.checkCancellation()
                 draft = output
                 draftIsDemo = isDemo
+                let replaced = before.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                previousDraft = replaced.isEmpty || replaced == output ? nil : before.draft
+                interrupted = nil
                 isGenerating = false
             } catch {
                 guard !Task.isCancelled else { return }
+                restoreInterruptedDraft()
                 isGenerating = false
                 if let error = error as? URLError {
                     errorMessage = error.code == .timedOut ? "The request timed out. Try again or choose a faster model."
@@ -220,7 +236,32 @@ final class AppModel {
     func cancel() {
         request?.cancel()
         request = nil
+        generationID += 1
+        restoreInterruptedDraft()
         isGenerating = false
+    }
+
+    /// Shows the reply as it streams in. Late updates from a cancelled request are ignored.
+    private func showPartial(_ text: String, generation: Int) {
+        guard generation == generationID, isGenerating else { return }
+        draft = text
+        draftIsDemo = false
+    }
+
+    /// A failed or cancelled request leaves the draft exactly as it was before.
+    private func restoreInterruptedDraft() {
+        guard let saved = interrupted else { return }
+        draft = saved.draft
+        draftIsDemo = saved.isDemo
+        interrupted = nil
+    }
+
+    /// Swaps the current draft with the one the last generation replaced.
+    func restorePreviousDraft() {
+        guard let previous = previousDraft, !isGenerating else { return }
+        previousDraft = hasDraft ? draft : nil
+        draft = previous
+        draftIsDemo = false
     }
 
     func copyDraft() {

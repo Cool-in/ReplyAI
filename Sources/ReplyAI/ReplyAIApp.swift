@@ -17,6 +17,8 @@ struct ReplyAIApp: App {
             CommandMenu("Reply") {
                 Button("Paste as Comment") { model.pasteSource() }
                     .keyboardShortcut("v", modifiers: [.command, .shift])
+                Button("Copy Draft") { model.copyDraft() }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("New Reply") { model.clear(); model.section = .reply }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }

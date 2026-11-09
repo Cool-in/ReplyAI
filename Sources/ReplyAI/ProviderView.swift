@@ -7,7 +7,12 @@ struct ProviderView: View {
     @State private var notice: String?
     @State private var failed = false
     @State private var removing = false
+    @State private var localModels = LocalModels.loading
     @Environment(\.desk) private var desk
+
+    private enum LocalModels: Equatable {
+        case loading, unreachable, found([String])
+    }
 
     private var provider: Provider { model.library.settings.provider }
 
@@ -42,6 +47,34 @@ struct ProviderView: View {
                         Text("127.0.0.1:11434").font(.system(.callout, design: .monospaced)).textSelection(.enabled)
                         Text("ReplyAI sends to the Ollama process on this Mac. Choose a local model to keep generation on the device.")
                             .foregroundStyle(.secondary)
+                        Rectangle().fill(desk.line).frame(height: 1).padding(.vertical, 3)
+                        HStack(spacing: 10) {
+                            switch localModels {
+                            case .loading:
+                                Text("Checking for installed models…").foregroundStyle(.secondary)
+                            case .unreachable:
+                                Label("Couldn’t reach Ollama. Start it, then refresh.", systemImage: "exclamationmark.circle")
+                                    .foregroundStyle(.secondary)
+                            case .found(let names) where names.isEmpty:
+                                Text("Ollama is running, but no local models are installed yet.").foregroundStyle(.secondary)
+                            case .found(let names):
+                                Menu {
+                                    ForEach(names, id: \.self) { name in
+                                        Button(name) { model.library.settings.model = name }
+                                    }
+                                } label: {
+                                    Label("Choose Installed Model", systemImage: "list.bullet")
+                                }
+                                .menuStyle(.borderlessButton)
+                                .fixedSize()
+                                .accessibilityLabel("Choose installed model")
+                            }
+                            Spacer(minLength: 0)
+                            Button("Refresh", systemImage: "arrow.clockwise") { Task { await loadLocalModels() } }
+                                .buttonStyle(DeskButton())
+                                .disabled(localModels == .loading)
+                        }
+                        .font(.callout)
                     }
                 }
             } else {
@@ -94,6 +127,9 @@ struct ProviderView: View {
             .background(desk.inset, in: RoundedRectangle(cornerRadius: 12))
         }
         .frame(maxWidth: 670, alignment: .leading)
+        .task(id: provider) {
+            if provider == .ollama { await loadLocalModels() }
+        }
         .onChange(of: provider) { _, _ in
             key = ""
             notice = nil
@@ -103,6 +139,15 @@ struct ProviderView: View {
             Button("Remove Key", role: .destructive) {
                 update("API key removed.") { try Keychain.remove(provider) }
             }
+        }
+    }
+
+    private func loadLocalModels() async {
+        localModels = .loading
+        do {
+            localModels = .found(try await HTTPGenerator.ollamaModels())
+        } catch {
+            localModels = .unreachable
         }
     }
 

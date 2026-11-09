@@ -6,6 +6,8 @@ public protocol ReplyGenerating: Sendable {
 
 public enum GenerationError: LocalizedError, Equatable {
     case missingModel, missingKey, cloudOllamaModel, invalidResponse, emptyReply, incomplete, http(Int)
+    /// A failure the provider explained in its own words, with the HTTP status when there was one.
+    case provider(Int?, String)
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +21,8 @@ public enum GenerationError: LocalizedError, Equatable {
         case .http(404): "The model was not found. Check its exact ID and make sure it is available."
         case .http(429): "The provider reported a rate or quota limit. Check your account or try again shortly."
         case .http(let status): "The provider could not complete the request (HTTP \(status)). Check your model settings and try again."
+        case .provider(let status?, let message): "\(GenerationError.http(status).errorDescription ?? "") The provider said: \(message)"
+        case .provider(nil, let message): "The provider reported an error: \(message)"
         }
     }
 }
@@ -57,6 +61,16 @@ public struct HTTPGenerator: ReplyGenerating {
         let done_reason: String?
     }
 
+    private struct OllamaTags: Decodable {
+        struct Model: Decodable {
+            let name: String
+        }
+        let models: [Model]
+    }
+
+    /// Room for the reply plus any reasoning a model does first, which counts against the same limit.
+    static let reasoningTokenLimit = 4_096
+
     private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         func urlSession(
             _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
@@ -74,8 +88,9 @@ public struct HTTPGenerator: ReplyGenerating {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
         config.httpShouldSetCookies = false
-        config.timeoutIntervalForRequest = 90
-        config.timeoutIntervalForResource = 120
+        // The request timeout is an idle timeout, so a slow local model can keep streaming.
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 600
         return URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
     }()
 
@@ -89,11 +104,68 @@ public struct HTTPGenerator: ReplyGenerating {
         let request = try request(for: prompt)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw GenerationError.invalidResponse }
-        guard (200...299).contains(http.statusCode) else { throw GenerationError.http(http.statusCode) }
+        guard (200...299).contains(http.statusCode) else { throw Self.failure(status: http.statusCode, body: data) }
         return try decode(data)
     }
 
-    func request(for prompt: ReplyPrompt) throws -> URLRequest {
+    /// Streams a reply. `onText` receives the text so far each time more arrives.
+    /// Returns the finished reply, or throws if the provider failed or stopped early.
+    public func stream(_ prompt: ReplyPrompt, onText: @Sendable (String) async -> Void) async throws -> String {
+        let request = try request(for: prompt, streaming: true)
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw GenerationError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            var body = Data()
+            for try await byte in bytes {
+                body.append(byte)
+                if body.count >= 16_384 { break }
+            }
+            throw Self.failure(status: http.statusCode, body: body)
+        }
+        var reply = ReplyStream(provider: settings.provider)
+        for try await line in bytes.lines {
+            if try reply.consume(line) != nil { await onText(reply.text) }
+        }
+        return try reply.finish()
+    }
+
+    /// Names of the models installed in the Ollama running on this Mac.
+    public static func ollamaModels(session: URLSession? = nil) async throws -> [String] {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:11434/api/tags")!)
+        request.timeoutInterval = 3
+        let (data, response) = try await (session ?? sharedSession).data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw GenerationError.invalidResponse }
+        return try decodeOllamaModels(data)
+    }
+
+    static func decodeOllamaModels(_ data: Data) throws -> [String] {
+        do {
+            return try JSONDecoder().decode(OllamaTags.self, from: data).models.map(\.name)
+                .filter { !isCloudModel($0) }.sorted()
+        } catch is DecodingError {
+            throw GenerationError.invalidResponse
+        }
+    }
+
+    static func isCloudModel(_ name: String) -> Bool {
+        let name = name.lowercased()
+        return name.hasSuffix(":cloud") || name.hasSuffix("-cloud")
+    }
+
+    /// Prefers the provider's own explanation of a failed request over a bare status code.
+    static func failure(status: Int, body: Data) -> GenerationError {
+        guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return .http(status) }
+        let raw = (object["error"] as? [String: Any])?["message"] as? String ?? object["error"] as? String
+        return raw.flatMap(clean).map { GenerationError.provider(status, $0) } ?? .http(status)
+    }
+
+    /// Collapses whitespace and bounds the length of text a provider sent back.
+    static func clean(_ message: String) -> String? {
+        let text = message.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return text.isEmpty ? nil : String(text.prefix(300))
+    }
+
+    func request(for prompt: ReplyPrompt, streaming: Bool = false) throws -> URLRequest {
         let model = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !model.isEmpty else { throw GenerationError.missingModel }
 
@@ -111,7 +183,8 @@ public struct HTTPGenerator: ReplyGenerating {
             body["instructions"] = prompt.instructions
             body["input"] = [input]
             body["store"] = false
-            body["max_output_tokens"] = 1_024
+            body["max_output_tokens"] = Self.reasoningTokenLimit
+            if streaming { body["stream"] = true }
         case .anthropic:
             guard let key, !key.isEmpty else { throw GenerationError.missingKey }
             request.setValue(key, forHTTPHeaderField: "x-api-key")
@@ -119,12 +192,12 @@ public struct HTTPGenerator: ReplyGenerating {
             body["system"] = prompt.instructions
             body["messages"] = [input]
             body["max_tokens"] = 1_024
+            if streaming { body["stream"] = true }
         case .ollama:
-            let name = model.lowercased()
-            guard !name.hasSuffix(":cloud"), !name.hasSuffix("-cloud") else { throw GenerationError.cloudOllamaModel }
+            guard !Self.isCloudModel(model) else { throw GenerationError.cloudOllamaModel }
             body["messages"] = [system, input]
-            body["stream"] = false
-            body["options"] = ["num_predict": 1_024]
+            body["stream"] = streaming
+            body["options"] = ["num_predict": Self.reasoningTokenLimit]
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request

@@ -222,6 +222,12 @@ private struct QuickReplyView: View {
                         Text("Simulated").font(.caption.weight(.semibold)).foregroundStyle(desk.violet)
                     }
                     Spacer()
+                    if model.previousDraft != nil && !model.isGenerating {
+                        Button("Previous Draft", systemImage: "arrow.uturn.backward") { model.restorePreviousDraft() }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(DeskButton(kind: .quiet))
+                            .help("Swap back to the draft from before the last generation")
+                    }
                     Button(model.copied ? "Copied" : "Copy Draft", systemImage: model.copied ? "checkmark" : "doc.on.doc") {
                         model.copyDraft()
                     }
@@ -230,6 +236,7 @@ private struct QuickReplyView: View {
                 }
                 WritingField(text: $model.draft, placeholder: "Your reply will appear here. You can also start writing.",
                              label: "Editable draft", height: 87, onPaper: true)
+                    .disabled(model.isGenerating)
             }
             .disabled(model.pendingSource != nil)
         }
