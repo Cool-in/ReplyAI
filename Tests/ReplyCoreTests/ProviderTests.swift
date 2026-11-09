@@ -241,7 +241,8 @@ func streamingRequestDeliversPartialsThenTheFinishedReply(_ provider: Provider) 
     let prompt = ReplyPrompt(source: "How does it work?")
 
     let request = try generator.request(for: prompt, streaming: true)
-    let body = try #require(JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: Any])
+    let data = try #require(request.httpBody)
+    let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     #expect(body["stream"] as? Bool == true)
 
     let partials = Partials()
