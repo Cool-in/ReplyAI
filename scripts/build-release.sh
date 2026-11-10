@@ -27,6 +27,8 @@ bundle="dist/ReplyAI.app"
 mkdir -p "$bundle/Contents/MacOS"
 install -m 755 "$binary_dir/ReplyAI" "$bundle/Contents/MacOS/ReplyAI"
 install -m 644 scripts/Info.plist "$bundle/Contents/Info.plist"
+mkdir -p "$bundle/Contents/Resources"
+install -m 644 Resources/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 plutil -lint "$bundle/Contents/Info.plist"
 
 if [[ "$identity" == "-" ]]; then
