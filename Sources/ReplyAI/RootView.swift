@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RootView: View {
@@ -10,7 +11,7 @@ struct RootView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let rail: CGFloat = geometry.size.width >= 960 ? 205 : 171
+            let rail: CGFloat = geometry.size.width >= 960 ? 208 : 171
             let margin: CGFloat = geometry.size.width >= 960 ? 38 : 26
             let contentWidth = geometry.size.width - rail - margin * 2
             HStack(spacing: 0) {
@@ -71,27 +72,16 @@ private struct DeskRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "quote.bubble.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(desk.sidebar)
-                    .frame(width: 34, height: 34)
-                    .background(desk.railAccent, in: RoundedRectangle(cornerRadius: 9))
-                    .accessibilityHidden(true)
+                AppMark(size: 32)
                 Text("ReplyAI")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                    .tracking(-0.7)
-                    .foregroundStyle(desk.railText)
+                    .font(.system(size: 21, weight: .regular, design: .serif))
+                    .tracking(-0.4)
+                    .foregroundStyle(desk.text)
             }
             .padding(.horizontal, 4)
+            .padding(.bottom, 26)
 
-            Eyebrow("Workspace")
-                .foregroundStyle(desk.railMuted)
-                .padding(.leading, 9)
-                .padding(.top, 42)
-                .padding(.bottom, 12)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 ForEach(Section.allCases.filter { $0 != .help }) { section in
                     RailLink(section: section, selected: (selection ?? .reply) == section) {
                         selection = section
@@ -105,29 +95,30 @@ private struct DeskRail: View {
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: "lock.shield")
                     .font(.system(size: 13))
-                    .foregroundStyle(desk.railAccent)
+                    .foregroundStyle(desk.violet)
                     .padding(.top, 1)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Library on this Mac")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(desk.railText)
+                        .foregroundStyle(desk.text)
                     Text("You decide what to send.")
                         .font(.system(size: 11))
-                        .foregroundStyle(desk.railMuted)
+                        .foregroundStyle(desk.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(.top, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .top) { Rectangle().fill(desk.railMuted.opacity(0.20)).frame(height: 1) }
+            .overlay(alignment: .top) { Rectangle().fill(desk.line).frame(height: 1) }
             .padding(.horizontal, 4)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .padding(.top, 57)
         .padding(.bottom, 25)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(desk.sidebar)
+        .overlay(alignment: .trailing) { Rectangle().fill(desk.line).frame(width: 1) }
     }
 }
 
@@ -143,24 +134,21 @@ private struct RailLink: View {
             HStack(spacing: 10) {
                 Image(systemName: section.icon)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(selected ? desk.railAccent : desk.railMuted)
+                    .foregroundStyle(selected ? desk.violet : desk.muted)
                     .frame(width: 18)
                     .accessibilityHidden(true)
                 Text(section.rawValue)
                     .font(.system(size: 13, weight: selected ? .semibold : .medium))
                 Spacer()
-                if selected {
-                    Circle().fill(desk.railAccent).frame(width: 5, height: 5)
-                        .accessibilityHidden(true)
-                }
             }
             .padding(.horizontal, 10)
-            .frame(height: 39)
-            .foregroundStyle(selected ? desk.railText : desk.railMuted)
+            .frame(height: 36)
+            .foregroundStyle(selected ? desk.text : desk.muted)
             .background(
-                selected ? desk.railSelection : hover ? desk.railSelection.opacity(0.52) : .clear,
-                in: RoundedRectangle(cornerRadius: 8)
+                selected ? desk.paper : hover ? desk.paper.opacity(0.55) : .clear,
+                in: RoundedRectangle(cornerRadius: 9)
             )
+            .shadow(color: .black.opacity(selected ? (desk.dark ? 0.22 : 0.06) : 0), radius: 3, y: 1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

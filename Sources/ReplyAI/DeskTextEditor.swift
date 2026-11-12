@@ -7,6 +7,7 @@ struct DeskTextEditor: NSViewRepresentable {
     let font: NSFont
     let textColor: NSColor
     let caretColor: NSColor
+    var lineSpacing: CGFloat = 4
     let focusChanged: (Bool) -> Void
     @Environment(\.isEnabled) private var enabled
 
@@ -38,7 +39,7 @@ struct DeskTextEditor: NSViewRepresentable {
             DispatchQueue.main.async { coordinator?.parent.focusChanged(focused) }
         }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 4
+        paragraph.lineSpacing = lineSpacing
         editor.defaultParagraphStyle = paragraph
         scroll.documentView = editor
         return scroll

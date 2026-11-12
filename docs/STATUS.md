@@ -1,6 +1,6 @@
 # Current status
 
-ReplyAI 0.2.1 (3). 0.2.1 adds the app icon (`Resources/AppIcon.icns`, drawn from `Resources/AppIcon.svg`).
+ReplyAI 0.3.0 (4). 0.2.1 added the app icon (`Resources/AppIcon.icns`, drawn from `Resources/AppIcon.svg`). 0.3.0 is the Paper Desk restyle: cream sidebar, the icon's violet as the accent, flat inset fields for the comment and brief, and a serif draft sheet, in the workspace and Quick Reply.
 
 - 0.2.0 adds streamed replies for all three providers, the provider’s own wording in error messages, a Previous Draft swap after regenerating, an installed model menu for Ollama, and a Copy Draft menu shortcut. Saves are debounced and one network session is reused.
 - 0.2.0 is verified by CI on a macOS runner: the full package builds, the Swift Testing suite passes (stream parsing, streamed requests through a stubbed session, provider error text, the Ollama model list, plus the earlier coverage), and both the debug bundle and the release zip package and pass `codesign --verify --strict`.
