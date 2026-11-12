@@ -243,6 +243,20 @@ struct DeskField: ViewModifier {
     }
 }
 
+/// Lets the window be dragged from any empty area, not only the strip at the very top.
+/// Buttons, fields and other controls still take their own clicks.
+struct WindowDragEnabler: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class DragView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.isMovableByWindowBackground = true
+        }
+    }
+}
+
 /// The app's own icon, as macOS resolves it for the running bundle.
 struct AppMark: View {
     var size: CGFloat = 30
