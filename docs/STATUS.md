@@ -17,14 +17,14 @@ ReplyAI 0.4.0 (5).
   - Quick Reply has Copy and Close. Example mode ends as soon as the example comment is edited.
   - Removing a sample or snapshot asks first. Each import rejection has its own message.
   - Non-content diagnostics through `os.Logger` (subsystem `dev.replyai.mac`). A tag-triggered release workflow.
+  - The empty band at the top of the window is gone, and the main window drags from any empty area.
 
 ## Verification
 
-- 0.2.0 and 0.2.1 were built, tested and packaged by CI on a macOS runner.
-- 0.3.0 and 0.4.0 have NOT been compiled as an app. The repository's GitHub Actions budget ran out, so no macOS build has run since 0.2.1.
-- `ReplyCore` for 0.4.0 was compiled and its tests run on Linux with Swift 6.0.3 (16 test functions pass). That run excludes the `URLSession.bytes` streaming transport and its end to end test, which Linux Foundation lacks.
-- Nothing in the app target (SwiftUI, AppKit, the shortcut, Keychain) has been compiled or exercised for 0.3.0 or 0.4.0. Build it on a Mac with `swift test && ./scripts/build-app.sh` before relying on it.
-- No live provider request has been made in this line of work.
+- 0.4.0 was built on a Mac with Swift 6.4.2 (Xcode, macOS 26 SDK): `swift build` finished with no warnings and `swift test` passed all 18 test functions, including the streamed request tests.
+- `scripts/build-app.sh` produced the bundle, `codesign --verify --strict` passed, and the app was installed and launched.
+- Exercised in the running app: the example flow generates a draft, the Paper Desk workspace and Settings render, the Ollama panel reports when Ollama is not running, and the top spacing fix shows.
+- Not yet exercised by hand: a live provider request, the global shortcut and its copy fallback (check Chrome and Slack), Quick Reply, the wide two column layout, dragging the window from empty areas, and the icon in the Dock.
 
 ## Earlier QA
 
