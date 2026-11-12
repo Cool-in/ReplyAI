@@ -20,6 +20,14 @@ jobs:
         run: ./scripts/build-app.sh
       - name: Package release zip
         run: ./scripts/build-release.sh
+      - name: Check the bundle shows its own icon
+        run: swift scripts/check-icon.swift dist/ReplyAI.app
+      - name: Diagnose the earlier icon file
+        run: |
+          cp -R dist/ReplyAI.app "$RUNNER_TEMP/Old.app"
+          cp Resources/AppIcon.icns "$RUNNER_TEMP/Old.app/Contents/Resources/AppIcon.icns"
+          swift scripts/check-icon.swift "$RUNNER_TEMP/Old.app" || echo "EARLIER ICNS DOES NOT RESOLVE"
+          iconutil -c iconset Resources/AppIcon.icns -o "$RUNNER_TEMP/old.iconset" && ls "$RUNNER_TEMP/old.iconset" || echo "EARLIER ICNS REJECTED BY ICONUTIL"
       - uses: actions/upload-artifact@v4
         with:
           name: ReplyAI-release
