@@ -31,8 +31,8 @@ struct ComposerView: View {
 
             if wide {
                 GeometryReader { geometry in
-                    HStack(alignment: .top, spacing: 16) {
-                        sourceSheet.frame(width: (geometry.size.width - 16) * 0.44)
+                    HStack(alignment: .top, spacing: 28) {
+                        sourceSheet.frame(width: (geometry.size.width - 28) * 0.40)
                         draftSheet
                     }
                 }
@@ -61,44 +61,41 @@ struct ComposerView: View {
     }
 
     private var sourceSheet: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 11) {
-                HStack(spacing: 10) {
-                    DeskGlyph(symbol: "text.quote")
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Comment").font(.system(size: 16, weight: .semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        Text(model.importedSource ? "Imported text" : "Source text")
-                            .font(.system(size: 11))
-                            .foregroundStyle(desk.muted)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text("Comment").font(.system(size: 13, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(model.importedSource ? "Imported text" : "Source text")
+                        .font(.system(size: 11))
+                        .foregroundStyle(desk.muted)
                     Spacer(minLength: 0)
                     Button("Paste", systemImage: "document.on.clipboard") { model.pasteSource() }
-                        .buttonStyle(DeskButton())
+                        .buttonStyle(DeskButton(kind: .accent))
                 }
 
                 WritingField(
                     text: $model.source, placeholder: "Paste a post, comment, or message to answer…",
-                    label: "Comment", height: 113, onPaper: true
+                    label: "Comment", height: wide ? 146 : 113
                 )
-                Rectangle().fill(desk.line).frame(height: 1)
 
-                HStack(spacing: 6) {
-                    Text("Reply brief").font(.system(size: 12, weight: .semibold))
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text("Reply brief").font(.system(size: 13, weight: .semibold))
                     Text("Optional").font(.system(size: 11)).foregroundStyle(desk.muted)
                 }
+                .padding(.top, 6)
                 WritingField(text: $model.brief, placeholder: "What should your reply say?",
-                             label: "Reply brief", height: 43, onPaper: true)
+                             label: "Reply brief", height: 43)
 
                 if model.source.count > ReplyPrompt.maxSource || model.brief.count > ReplyPrompt.maxNotes {
                     Text("Limit: 6,000 characters for the comment and 1,000 for the brief.")
-                        .font(.caption).foregroundStyle(.red)
+                        .font(.caption).foregroundStyle(desk.danger)
                 }
 
                 Spacer(minLength: 0)
                 DraftOptions(model: model)
             }
-            .frame(minHeight: wide ? 363 : 327, maxHeight: wide ? 363 : nil, alignment: .topLeading)
+            .frame(minHeight: wide ? 407 : 327, maxHeight: wide ? 407 : nil, alignment: .topLeading)
             .disabled(model.isGenerating)
         }
     }
@@ -106,15 +103,12 @@ struct ComposerView: View {
     private var draftSheet: some View {
         Panel {
             VStack(alignment: .leading, spacing: 11) {
-                HStack(spacing: 10) {
-                    DeskGlyph(symbol: "pencil.line")
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Your draft").font(.system(size: 16, weight: .semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        Text("Edit before you copy")
-                            .font(.system(size: 11))
-                            .foregroundStyle(desk.muted)
-                    }
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text("Your draft").font(.system(size: 13, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Edit before you copy")
+                        .font(.system(size: 11))
+                        .foregroundStyle(desk.muted)
                     Spacer(minLength: 0)
                     if model.draftIsDemo {
                         Text("Simulated")
@@ -128,7 +122,7 @@ struct ComposerView: View {
 
                 ZStack {
                     WritingField(text: $model.draft, placeholder: "", label: "Editable draft",
-                                 height: wide ? 242 : 176, onPaper: true)
+                                 height: wide ? 248 : 184, onPaper: true, size: 19, serif: true)
                         .disabled(model.isGenerating)
                     if model.draft.isEmpty {
                         VStack(spacing: 9) {
@@ -171,7 +165,7 @@ struct ComposerView: View {
                     Button(model.copied ? "Copied" : "Copy Draft", systemImage: model.copied ? "checkmark" : "doc.on.doc") {
                         model.copyDraft()
                     }
-                    .buttonStyle(DeskButton())
+                    .buttonStyle(DeskButton(kind: .tinted))
                     .disabled(!model.hasDraft)
                 }
             }
@@ -194,12 +188,12 @@ struct ComposerView: View {
                 Button("Review Input", systemImage: "eye") { preview = true }
                     .buttonStyle(DeskButton())
                     .disabled(!model.hasSource)
-                GenerateReplyControl(model: model) { model.section = .settings }
+                GenerateReplyControl(model: model, showsShortcut: true) { model.section = .settings }
             }
             if let error = model.errorMessage {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(desk.danger)
                     .accessibilityAddTraits(.updatesFrequently)
             }
         }
@@ -209,50 +203,71 @@ struct ComposerView: View {
 
 struct DraftOptions: View {
     @Bindable var model: AppModel
+    /// Compact fits beside the brief in Quick Reply: both choices are menus and nothing stretches.
+    var compact = false
 
     var body: some View {
         HStack(spacing: 8) {
             if model.demo {
                 MenuChip(title: "Trailnote", symbol: "folder")
+            } else if compact {
+                projectMenu.fixedSize()
             } else {
-                Menu {
-                    Picker("Project", selection: $model.selectedProjectID) {
-                        Text("No project").tag(nil as UUID?)
-                        ForEach(model.library.projects) { project in
-                            Text(project.name).tag(Optional(project.id))
-                        }
-                    }
-                    .pickerStyle(.inline)
-                } label: {
-                    MenuChip(title: model.project?.name ?? "No project", symbol: "folder", showsArrow: true)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel("Project")
-                .accessibilityValue(model.project?.name ?? "No project")
+                projectMenu.fixedSize(horizontal: false, vertical: true)
             }
-            Menu {
+            if compact {
+                lengthMenu
+            } else {
                 Picker("Length", selection: $model.length) {
                     ForEach(ReplyLength.allCases) { Text($0.rawValue).tag($0) }
                 }
-                .pickerStyle(.inline)
-            } label: {
-                MenuChip(title: model.length.rawValue, symbol: "text.alignleft", showsArrow: true)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                Spacer(minLength: 0)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .accessibilityLabel("Length")
-            .accessibilityValue(model.length.rawValue)
-            Spacer(minLength: 0)
         }
     }
 
+    private var projectMenu: some View {
+        Menu {
+            Picker("Project", selection: $model.selectedProjectID) {
+                Text("No project").tag(nil as UUID?)
+                ForEach(model.library.projects) { project in
+                    Text(project.name).tag(Optional(project.id))
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            MenuChip(title: model.project?.name ?? "No project", symbol: "folder", showsArrow: true,
+                     maxTitleWidth: compact ? 96 : nil)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Project")
+        .accessibilityValue(model.project?.name ?? "No project")
+    }
+
+    private var lengthMenu: some View {
+        Menu {
+            Picker("Length", selection: $model.length) {
+                ForEach(ReplyLength.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            MenuChip(title: model.length.rawValue, symbol: "text.alignleft", showsArrow: true)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Length")
+        .accessibilityValue(model.length.rawValue)
+    }
 }
 
 struct GenerateReplyControl: View {
     let model: AppModel
+    var showsShortcut = false
     let openSettings: () -> Void
 
     var body: some View {
@@ -261,8 +276,20 @@ struct GenerateReplyControl: View {
             Button("Cancel") { model.cancel() }
                 .buttonStyle(DeskButton())
         } else if model.hasConfiguredModel || model.demo {
-            Button(model.hasDraft ? "Regenerate" : "Generate Reply",
-                   systemImage: model.hasDraft ? "arrow.clockwise" : "sparkles") { model.generate() }
+            Button { model.generate() } label: {
+                HStack(spacing: 9) {
+                    Label(model.hasDraft ? "Regenerate" : "Generate Reply",
+                          systemImage: model.hasDraft ? "arrow.clockwise" : "sparkles")
+                    if showsShortcut {
+                        Text("⌘↩")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.20), in: RoundedRectangle(cornerRadius: 5))
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
                 .buttonStyle(DeskButton(kind: .primary))
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!model.hasSource)
@@ -279,12 +306,13 @@ private struct MenuChip: View {
     let title: String
     let symbol: String
     var showsArrow = false
+    var maxTitleWidth: CGFloat?
     @Environment(\.desk) private var desk
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: symbol).foregroundStyle(desk.violet)
-            Text(title).lineLimit(1)
+            Text(title).lineLimit(1).frame(maxWidth: maxTitleWidth)
             if showsArrow {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
@@ -293,9 +321,9 @@ private struct MenuChip: View {
         }
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(desk.text)
-        .padding(.horizontal, 9)
+        .padding(.horizontal, 10)
         .frame(minHeight: 32)
-        .background(desk.inset, in: RoundedRectangle(cornerRadius: 8))
+        .background(desk.inset, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

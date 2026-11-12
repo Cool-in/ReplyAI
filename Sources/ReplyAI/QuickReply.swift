@@ -1,4 +1,5 @@
 import AppKit
+import ReplyCore
 import SwiftUI
 
 @MainActor
@@ -8,7 +9,7 @@ final class QuickReplyController {
 
     func show(_ capture: SelectionCapture? = nil) {
         model.isOverlayVisible = true
-        if case .selected(let text) = capture { model.acceptSelection(text) }
+        if case .selected(let text) = capture { model.acceptCapture(text) }
         let panel = panel ?? makePanel()
         panel.contentView = NSHostingView(rootView: QuickReplyView(
             model: model,
@@ -124,12 +125,12 @@ private struct QuickReplyView: View {
                         draft
                         if let error = model.errorMessage {
                             Label(error, systemImage: "exclamationmark.circle")
-                                .foregroundStyle(.red).font(.callout)
+                                .foregroundStyle(desk.danger).font(.callout)
                                 .accessibilityAddTraits(.updatesFrequently)
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                 }
                 .scrollIndicators(.hidden)
                 footer
@@ -139,7 +140,10 @@ private struct QuickReplyView: View {
         .foregroundStyle(desk.text)
         .tint(desk.violet)
         .environment(\.desk, desk)
+        .environment(\.deskTextScale, CGFloat(model.library.settings.textSize.scale))
         .onChange(of: model.draft) { _, _ in model.copied = false }
+        // Length and project can change here while the main window is closed, so save from here too.
+        .onChange(of: model.library) { _, _ in model.save() }
         .onChange(of: model.pendingSource != nil) { _, pending in
             reviewing = false
             resize(pending)
@@ -148,76 +152,67 @@ private struct QuickReplyView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            DeskGlyph(symbol: "quote.bubble.fill", size: 29)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Quick reply")
-                    .font(.system(size: 22, design: .serif))
-                    .accessibilityAddTraits(.isHeader)
-                Text("ReplyAI").font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(desk.railMuted)
-            }
+            AppMark(size: 28)
+            Text("Quick reply")
+                .font(.system(size: 20, design: .serif))
+                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
-            Button { openWorkspace(.reply) } label: {
-                Label("Open Workspace", systemImage: "arrow.up.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 10)
-                    .frame(height: 33)
-                    .background(desk.railSelection, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
+            Button("Open Workspace", systemImage: "arrow.up.right") { openWorkspace(.reply) }
+                .buttonStyle(DeskButton(kind: .quiet))
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 33, height: 33)
-                    .background(desk.railSelection, in: RoundedRectangle(cornerRadius: 8))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(desk.muted)
+                    .frame(width: 28, height: 28)
+                    .background(desk.inset, in: Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
             .accessibilityLabel("Close Quick Reply")
         }
-        .foregroundStyle(desk.railText)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(desk.sidebar)
+        .foregroundStyle(desk.text)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
+        .background(desk.canvas)
     }
 
     private var source: some View {
-        Panel(padding: 11) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Comment").font(.system(size: 14, weight: .semibold))
-                        if model.importedSource {
-                            Text("Imported text").font(.caption).foregroundStyle(desk.muted)
-                        }
-                    }
-                    Spacer()
-                    Button("Paste", systemImage: "document.on.clipboard") {
-                        capture = nil
-                        model.pasteSource()
-                    }
-                    .buttonStyle(DeskButton())
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text("Comment").font(.system(size: 13, weight: .semibold))
+                if model.importedSource {
+                    Text("Imported text").font(.system(size: 11)).foregroundStyle(desk.muted)
                 }
-                WritingField(text: $model.source, placeholder: "Paste or type the comment you want to answer…",
-                             label: "Comment", height: 42, onPaper: true)
-                Rectangle().fill(desk.line).frame(height: 1)
+                Spacer()
+                Button("Paste", systemImage: "document.on.clipboard") {
+                    capture = nil
+                    model.pasteSource()
+                }
+                .buttonStyle(DeskButton(kind: .accent))
+            }
+            WritingField(text: $model.source, placeholder: "Paste or type the comment you want to answer…",
+                         label: "Comment", height: 62)
+            HStack(spacing: 8) {
                 TextField("Reply brief, optional", text: $model.brief)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 32)
+                    .background(desk.inset, in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityLabel("Reply brief")
-                DraftOptions(model: model)
+                DraftOptions(model: model, compact: true)
             }
-            .disabled(model.isGenerating || model.pendingSource != nil)
         }
+        .disabled(model.isGenerating || model.pendingSource != nil)
     }
 
     private var draft: some View {
-        Panel(padding: 11) {
+        Panel(padding: 14, radius: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Your draft").font(.system(size: 14, weight: .semibold))
+                    Text("Your draft").font(.system(size: 13, weight: .semibold))
                     if model.draftIsDemo {
                         Text("Simulated").font(.caption.weight(.semibold)).foregroundStyle(desk.violet)
                     }
@@ -228,14 +223,18 @@ private struct QuickReplyView: View {
                             .buttonStyle(DeskButton(kind: .quiet))
                             .help("Swap back to the draft from before the last generation")
                     }
-                    Button(model.copied ? "Copied" : "Copy Draft", systemImage: model.copied ? "checkmark" : "doc.on.doc") {
+                    // One step to finish: the draft goes to the clipboard and the panel gets out of the way.
+                    Button("Copy and Close", systemImage: "doc.on.doc") {
                         model.copyDraft()
+                        if model.copied { close() }
                     }
-                    .buttonStyle(DeskButton())
-                    .disabled(!model.hasDraft)
+                    .buttonStyle(DeskButton(kind: .tinted))
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .disabled(!model.hasDraft || model.isGenerating)
+                    .help("Copy the draft and close Quick Reply (⇧⌘C)")
                 }
                 WritingField(text: $model.draft, placeholder: "Your reply will appear here. You can also start writing.",
-                             label: "Editable draft", height: 87, onPaper: true)
+                             label: "Editable draft", height: 112, onPaper: true, size: 16, serif: true)
                     .disabled(model.isGenerating)
             }
             .disabled(model.pendingSource != nil)
@@ -254,9 +253,10 @@ private struct QuickReplyView: View {
                 .disabled(!model.hasSource)
             GenerateReplyControl(model: model) { openWorkspace(.settings) }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(desk.paper)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(desk.sidebar)
+        .overlay(alignment: .top) { Rectangle().fill(desk.line).frame(height: 1) }
         .disabled(model.pendingSource != nil)
     }
 
@@ -296,7 +296,7 @@ private struct QuickReplyView: View {
                 Spacer()
                 Button("Keep Current") { model.pendingSource = nil }.buttonStyle(DeskButton())
                 Button("Replace") {
-                    model.replaceSource(text)
+                    model.confirmPendingSource()
                     capture = nil
                 }
                 .buttonStyle(DeskButton(kind: .primary))

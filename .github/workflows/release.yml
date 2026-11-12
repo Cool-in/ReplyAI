@@ -1,0 +1,28 @@
+name: Release
+
+# Push a tag like v0.4.0 to build the release zip and publish it as a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: swift test
+      - name: Package release zip
+        run: ./scripts/build-release.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          shasum -a 256 ReplyAI-*.zip > SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" ReplyAI-*.zip SHA256SUMS.txt \
+            -t "ReplyAI $GITHUB_REF_NAME" \
+            -n "Built from $GITHUB_SHA. Ad hoc signed unless a Developer ID identity is configured, so macOS will ask before first launch."

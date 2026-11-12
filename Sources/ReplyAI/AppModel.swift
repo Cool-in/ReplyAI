@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import os
 import ReplyCore
 
 enum Section: String, CaseIterable, Identifiable {
@@ -17,6 +18,9 @@ enum Section: String, CaseIterable, Identifiable {
     }
 }
 
+/// Non-content diagnostics only: never comment text, drafts, prompts or keys.
+let appLog = Logger(subsystem: "dev.replyai.mac", category: "app")
+
 @MainActor @Observable
 final class AppModel {
     static let shared = AppModel()
@@ -25,14 +29,8 @@ final class AppModel {
     var section: Section? = .reply
     var source = ""
     var brief = ""
-    var draft = ""
-    var length: ReplyLength = .short
-    var selectedProjectID: UUID?
-    var demo = false
-    var draftIsDemo = false
-    /// The draft that the last generation replaced, kept so it can be brought back.
-    var previousDraft: String?
-    var isGenerating = false
+    /// The draft and its generation state. The logic lives in ReplyCore, where it is tested.
+    var draftState = DraftState()
     var errorMessage: String?
     var storageError: String?
     var copied = false
@@ -42,9 +40,11 @@ final class AppModel {
     var showWindow: (() -> Void)?
     var isOverlayVisible = false
     var shortcutRegistrationStatus: Int32?
+    /// Set by the app delegate. Re-registers the global shortcut and returns the registration status.
+    var applyShortcut: ((ShortcutPreset) -> Int32)?
+    private var exampleLoaded = false
+    private var pendingFromCapture = false
     private var request: Task<Void, Never>?
-    private var generationID = 0
-    private var interrupted: (draft: String, isDemo: Bool)?
     private var pendingSave: Task<Void, Never>?
     private var dirty = false
     private let store: LibraryStore?
@@ -60,16 +60,44 @@ final class AppModel {
         }
         do {
             if let store { library = try store.load() }
+        } catch LibraryStore.Failure.newerVersion {
+            canSave = false
+            storageError = "This library was saved by a newer version of ReplyAI. Update the app to use it. Changes made now are temporary."
+            appLog.error("Library was written by a newer version; running without saving.")
         } catch {
             canSave = false
             storageError = "The saved library could not be read. Changes are temporary until you recover or move Library.json."
+            appLog.error("Library could not be read; running without saving.")
         }
         checkKey()
     }
 
+    var draft: String {
+        get { draftState.text }
+        set { draftState.text = newValue }
+    }
+    var draftIsDemo: Bool { draftState.isDemo }
+    /// The draft that the last generation replaced, kept so it can be brought back.
+    var previousDraft: String? { draftState.previous }
+    var isGenerating: Bool { draftState.isGenerating }
+
+    /// Length and project are remembered between launches.
+    var length: ReplyLength {
+        get { library.settings.length }
+        set { library.settings.length = newValue }
+    }
+    var selectedProjectID: UUID? {
+        get { library.settings.selectedProjectID }
+        set { library.settings.selectedProjectID = newValue }
+    }
+
+    /// Example mode lasts only while the example comment is untouched.
+    var demo: Bool { exampleLoaded && source == Self.demoSource }
+
     var hasSource: Bool { !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var hasDraft: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var hasDraft: Bool { draftState.hasText }
     var project: Project? { library.projects.first { $0.id == selectedProjectID } }
+    var libraryFile: URL? { store?.file }
 
     var hasConfiguredModel: Bool {
         !library.settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -122,7 +150,13 @@ final class AppModel {
             storageError = nil
         } catch {
             storageError = "Could not save your library. Check the app’s Application Support folder."
+            appLog.error("Library save failed.")
         }
+    }
+
+    func revealLibrary() {
+        guard let libraryFile else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([libraryFile])
     }
 
     func checkKey() {
@@ -140,6 +174,7 @@ final class AppModel {
 
     func acceptSelection(_ text: String) {
         section = .reply
+        pendingFromCapture = false
         if text == source {
             pendingSource = nil
             return
@@ -151,14 +186,40 @@ final class AppModel {
         }
     }
 
+    /// Text captured from another app. Starts drafting straight away when the user has opted in
+    /// and nothing needs confirming first.
+    func acceptCapture(_ text: String) {
+        let auto = library.settings.generateOnCapture
+        let fresh = text != source
+        // With drafting on capture switched on, a reply that was copied and not touched since is done:
+        // move straight on to the new selection instead of asking.
+        if auto, fresh, copied, !isGenerating {
+            replaceSource(text)
+        } else {
+            acceptSelection(text)
+        }
+        if pendingSource != nil {
+            pendingFromCapture = true
+        } else if auto, fresh, source == text, hasConfiguredModel {
+            generate()
+        }
+    }
+
+    /// The user chose Replace. A captured selection then drafts straight away if they opted in.
+    func confirmPendingSource() {
+        guard let text = pendingSource else { return }
+        let auto = pendingFromCapture && library.settings.generateOnCapture
+        replaceSource(text)
+        if auto, hasConfiguredModel { generate() }
+    }
+
     func replaceSource(_ text: String) {
         cancel()
-        demo = false
-        draftIsDemo = false
+        exampleLoaded = false
+        pendingFromCapture = false
         source = text
         brief = ""
-        draft = ""
-        previousDraft = nil
+        draftState.reset()
         copied = false
         errorMessage = nil
         pendingSource = nil
@@ -167,13 +228,11 @@ final class AppModel {
 
     func loadDemo() {
         cancel()
-        demo = true
-        draftIsDemo = false
+        exampleLoaded = true
         importedSource = false
-        source = "Does Trailnote keep working if I lose signal out on the trail?"
+        source = Self.demoSource
         brief = "Reassure them and explain what happens when they reconnect."
-        draft = ""
-        previousDraft = nil
+        draftState.reset()
         errorMessage = nil
         copied = false
         section = .reply
@@ -193,42 +252,45 @@ final class AppModel {
         let prompt = prompt
         let settings = library.settings
         let isDemo = demo
-        let before = (draft: draft, isDemo: draftIsDemo)
-        generationID += 1
-        let id = generationID
-        interrupted = before
+        let token = draftState.begin()
         errorMessage = nil
         copied = false
-        isGenerating = true
         request = Task {
             do {
                 let output: String
                 if isDemo {
                     try await Task.sleep(for: .milliseconds(320))
-                    output = "Yep! Trailnote keeps your notes on your Mac while you’re offline. They’ll sync when you’re back online, so you can keep writing even if you lose signal."
+                    output = Self.demoReply
                 } else {
                     let key = settings.provider == .ollama ? nil : try Keychain.read(settings.provider)
                     output = try await HTTPGenerator(settings: settings, key: key).stream(prompt) { [weak self] text in
-                        await self?.showPartial(text, generation: id)
+                        await self?.showPartial(text, token: token)
                     }
                 }
                 try Task.checkCancellation()
-                draft = output
-                draftIsDemo = isDemo
-                let replaced = before.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                previousDraft = replaced.isEmpty || replaced == output ? nil : before.draft
-                interrupted = nil
-                isGenerating = false
+                if draftState.finish(output, isDemo: isDemo, token: token) {
+                    announce("Draft ready.")
+                }
             } catch {
                 guard !Task.isCancelled else { return }
-                restoreInterruptedDraft()
-                isGenerating = false
+                let applied: Bool
+                if let failure = error as? GenerationError, case .cutShort(let partial) = failure {
+                    // Keep what arrived. The earlier draft stays available as Previous Draft.
+                    applied = draftState.finish(partial, token: token)
+                } else {
+                    applied = draftState.fail(token: token)
+                }
+                guard applied else { return }
+                let message: String
                 if let error = error as? URLError {
-                    errorMessage = error.code == .timedOut ? "The request timed out. Try again or choose a faster model."
+                    message = error.code == .timedOut ? "The request timed out. Try again or choose a faster model."
                         : "Could not reach \(settings.provider.title). Check your connection or make sure Ollama is running."
                 } else {
-                    errorMessage = error.localizedDescription
+                    message = error.localizedDescription
                 }
+                errorMessage = message
+                announce(message)
+                appLog.error("Generation failed: \(String(describing: type(of: error)), privacy: .public)")
             }
         }
     }
@@ -236,32 +298,17 @@ final class AppModel {
     func cancel() {
         request?.cancel()
         request = nil
-        generationID += 1
-        restoreInterruptedDraft()
-        isGenerating = false
+        draftState.cancel()
     }
 
     /// Shows the reply as it streams in. Late updates from a cancelled request are ignored.
-    private func showPartial(_ text: String, generation: Int) {
-        guard generation == generationID, isGenerating else { return }
-        draft = text
-        draftIsDemo = false
-    }
-
-    /// A failed or cancelled request leaves the draft exactly as it was before.
-    private func restoreInterruptedDraft() {
-        guard let saved = interrupted else { return }
-        draft = saved.draft
-        draftIsDemo = saved.isDemo
-        interrupted = nil
+    private func showPartial(_ text: String, token: Int) {
+        draftState.showPartial(text, token: token)
     }
 
     /// Swaps the current draft with the one the last generation replaced.
     func restorePreviousDraft() {
-        guard let previous = previousDraft, !isGenerating else { return }
-        previousDraft = hasDraft ? draft : nil
-        draft = previous
-        draftIsDemo = false
+        draftState.swapPrevious()
     }
 
     func copyDraft() {
@@ -270,6 +317,17 @@ final class AppModel {
         copied = NSPasteboard.general.setString(draft, forType: .string)
         if !copied { errorMessage = "Could not copy the draft to the clipboard." }
     }
+
+    /// Speaks a short status for VoiceOver users, who otherwise get no signal that a draft finished or failed.
+    private func announce(_ message: String) {
+        NSAccessibility.post(
+            element: NSApplication.shared, notification: .announcementRequested,
+            userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue]
+        )
+    }
+
+    static let demoSource = "Does Trailnote keep working if I lose signal out on the trail?"
+    static let demoReply = "Yep! Trailnote keeps your notes on your Mac while you’re offline. They’ll sync when you’re back online, so you can keep writing even if you lose signal."
 
     static let demoSamples = [
         VoiceSample(text: "Yep! You can start with the basics and tweak it as you go."),

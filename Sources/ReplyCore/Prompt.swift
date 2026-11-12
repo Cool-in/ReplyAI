@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ReplyLength: String, CaseIterable, Identifiable, Sendable {
+public enum ReplyLength: String, Codable, CaseIterable, Identifiable, Sendable {
     case short = "Short", standard = "Standard", detailed = "Detailed"
     public var id: String { rawValue }
 

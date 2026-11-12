@@ -1,4 +1,6 @@
 import AppKit
+import os
+import ReplyCore
 import SwiftUI
 
 @main
@@ -36,6 +38,9 @@ struct MenuActions: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        if let status = model.shortcutRegistrationStatus, status != 0 {
+            Text("Shortcut unavailable. Choose another in Settings.")
+        }
         Button("Quick Reply", action: quickReply)
         Button("Open ReplyAI") { show() }
         Button("Paste and Open ReplyAI") { show(); model.pasteSource() }
@@ -54,15 +59,31 @@ struct MenuActions: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let quickReply = QuickReplyController()
     private let selectionShortcut = SelectionShortcut()
+    private var capturing = false
 
     func showQuickReply() { quickReply.show() }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
-        AppModel.shared.shortcutRegistrationStatus = selectionShortcut.start { [weak self] in
-            let capture = SelectionCapture.focusedText()
-            self?.quickReply.show(capture)
+        let model = AppModel.shared
+        model.shortcutRegistrationStatus = selectionShortcut.start(model.library.settings.shortcut) { [weak self] in
+            Task { @MainActor [weak self] in
+                // One capture at a time: a second press mid-capture would snapshot the wrong clipboard.
+                guard let self, !self.capturing else { return }
+                self.capturing = true
+                defer { self.capturing = false }
+                let capture = await SelectionCapture.focusedText()
+                self.quickReply.show(capture)
+            }
+        }
+        if let status = model.shortcutRegistrationStatus, status != 0 {
+            appLog.error("Global shortcut registration failed with status \(status, privacy: .public).")
+        }
+        model.applyShortcut = { [weak self] preset in
+            let status = self?.selectionShortcut.register(preset) ?? 0
+            if status != 0 { appLog.error("Global shortcut registration failed with status \(status, privacy: .public).") }
+            return status
         }
     }
 

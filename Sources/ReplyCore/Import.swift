@@ -5,11 +5,15 @@ public enum DocumentImport {
     public static let maxDocuments = 12
 
     public enum Failure: LocalizedError {
-        case unsupported, tooLarge, notText, sensitive
+        case unsupported, wrongType, hidden, linked, sensitiveName, tooLarge, notText, sensitive
 
         public var errorDescription: String? {
             switch self {
             case .unsupported: "Choose a regular Markdown or plain text file from a visible folder."
+            case .wrongType: "Choose a Markdown or plain text file (.md, .markdown or .txt)."
+            case .hidden: "This file is hidden or inside a hidden folder. Copy it to a visible folder first."
+            case .linked: "This file is reached through an alias or symbolic link. Choose the original file."
+            case .sensitiveName: "The file name suggests it holds credentials. Rename a safe copy before importing it."
             case .tooLarge: "Choose a text file smaller than 64 KiB."
             case .notText: "Choose a nonempty UTF-8 text file."
             case .sensitive: "This file appears to contain credentials. Create a redacted copy before importing it."
@@ -21,15 +25,15 @@ public enum DocumentImport {
         let url = url.standardizedFileURL
         let name = url.lastPathComponent.lowercased()
         let sensitiveNames = ["secret", "credential", "password", "private-key", "private_key", "api-key", "api_key"]
-        guard url.isFileURL,
-              ["md", "markdown", "txt"].contains(url.pathExtension.lowercased()),
-              !url.pathComponents.contains(where: { $0.hasPrefix(".") }),
-              !sensitiveNames.contains(where: { name.contains($0) })
-        else { throw Failure.unsupported }
+        guard url.isFileURL else { throw Failure.unsupported }
+        guard ["md", "markdown", "txt"].contains(url.pathExtension.lowercased()) else { throw Failure.wrongType }
+        guard !url.pathComponents.contains(where: { $0.hasPrefix(".") }) else { throw Failure.hidden }
+        guard !sensitiveNames.contains(where: { name.contains($0) }) else { throw Failure.sensitiveName }
 
-        guard url.resolvingSymlinksInPath().pathComponents == url.pathComponents else { throw Failure.unsupported }
+        guard url.resolvingSymlinksInPath().pathComponents == url.pathComponents else { throw Failure.linked }
         let info = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
-        guard info.isRegularFile == true, info.isSymbolicLink != true else { throw Failure.unsupported }
+        guard info.isSymbolicLink != true else { throw Failure.linked }
+        guard info.isRegularFile == true else { throw Failure.unsupported }
         guard let size = info.fileSize, size <= maxBytes else { throw Failure.tooLarge }
         let file = try FileHandle(forReadingFrom: url)
         defer { try? file.close() }
