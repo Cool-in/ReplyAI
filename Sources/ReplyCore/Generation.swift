@@ -8,6 +8,10 @@ public enum GenerationError: LocalizedError, Equatable {
     case missingModel, missingKey, cloudOllamaModel, invalidResponse, emptyReply, incomplete, http(Int)
     /// A failure the provider explained in its own words, with the HTTP status when there was one.
     case provider(Int?, String)
+    /// A streamed reply that hit the length limit. Carries the text that arrived.
+    case cutShort(String)
+    /// The stream ended without the provider saying it had finished.
+    case connectionLost
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +27,8 @@ public enum GenerationError: LocalizedError, Equatable {
         case .http(let status): "The provider could not complete the request (HTTP \(status)). Check your model settings and try again."
         case .provider(let status?, let message): "\(GenerationError.http(status).errorDescription ?? "") The provider said: \(message)"
         case .provider(nil, let message): "The provider reported an error: \(message)"
+        case .cutShort: "The reply hit the length limit and was cut short. What arrived is in the draft. Edit it, or pick a shorter length and regenerate."
+        case .connectionLost: "The connection dropped before the reply finished. Your earlier draft is unchanged. Try again."
         }
     }
 }

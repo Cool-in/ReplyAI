@@ -115,8 +115,9 @@ struct ReplyStream {
 
     /// Call after the last line. Returns the finished reply or explains why there isn't one.
     func finish() throws -> String {
-        guard finished, !truncated else { throw GenerationError.incomplete }
         let reply = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if truncated { throw reply.isEmpty ? GenerationError.incomplete : GenerationError.cutShort(reply) }
+        guard finished else { throw GenerationError.connectionLost }
         guard !reply.isEmpty else { throw GenerationError.emptyReply }
         return reply
     }

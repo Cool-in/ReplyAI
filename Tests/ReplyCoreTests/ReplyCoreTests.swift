@@ -69,9 +69,11 @@ private func file(_ name: String, _ text: String, in directory: URL) throws -> U
     let tooLarge = try file("oversize.md", String(repeating: "x", count: DocumentImport.maxBytes + 1), in: directory)
     #expect(throws: DocumentImport.Failure.tooLarge) { try DocumentImport.read(tooLarge) }
     let hidden = try file(".env.md", "test", in: directory)
-    #expect(throws: DocumentImport.Failure.unsupported) { try DocumentImport.read(hidden) }
+    #expect(throws: DocumentImport.Failure.hidden) { try DocumentImport.read(hidden) }
     let credentials = try file("credentials.txt", "test", in: directory)
-    #expect(throws: DocumentImport.Failure.unsupported) { try DocumentImport.read(credentials) }
+    #expect(throws: DocumentImport.Failure.sensitiveName) { try DocumentImport.read(credentials) }
+    let image = try file("photo.png", "test", in: directory)
+    #expect(throws: DocumentImport.Failure.wrongType) { try DocumentImport.read(image) }
     let binary = try file("binary.txt", "\0text", in: directory)
     #expect(throws: DocumentImport.Failure.notText) { try DocumentImport.read(binary) }
     let sensitive = try file("README.md", "-----BEGIN PRIVATE KEY-----\nfictional fixture", in: directory)
@@ -84,14 +86,14 @@ private func file(_ name: String, _ text: String, in directory: URL) throws -> U
     let original = try file("README.md", "Public information", in: directory)
     let alias = directory.appendingPathComponent("alias.md")
     try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: original)
-    #expect(throws: DocumentImport.Failure.unsupported) { try DocumentImport.read(alias) }
+    #expect(throws: DocumentImport.Failure.linked) { try DocumentImport.read(alias) }
 
     let hidden = directory.appendingPathComponent(".credentials")
     try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: false)
     _ = try file("README.md", "Test data", in: hidden)
     let visible = directory.appendingPathComponent("visible")
     try FileManager.default.createSymbolicLink(at: visible, withDestinationURL: hidden)
-    #expect(throws: DocumentImport.Failure.unsupported) {
+    #expect(throws: DocumentImport.Failure.linked) {
         try DocumentImport.read(visible.appendingPathComponent("README.md"))
     }
 }
@@ -135,4 +137,140 @@ private func file(_ name: String, _ text: String, in directory: URL) throws -> U
     #expect(counts.documents == prompt.documentCount)
     #expect(counts.samples == 2)
     #expect(counts.documents == 2)
+}
+
+@Test func libraryFromAnOlderVersionLoadsWithDefaultsForNewFields() throws {
+    let directory = try fixtureDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("Library.json")
+    // What 0.2.0 wrote: no schemaVersion and none of the later settings.
+    let legacy = """
+    {"settings":{"provider":"anthropic","models":{"anthropic":"test-model"}},"voiceNotes":"Keep it short.",
+     "samples":[{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","text":"Happy to help."}],
+     "projects":[{"id":"7F9619FF-8B86-D011-B42D-00C04FC964FF","name":"App",
+       "documents":[{"id":"8F9619FF-8B86-D011-B42D-00C04FC964FF","name":"README.md","text":"Feature list","importedAt":700000000}]}]}
+    """
+    try Data(legacy.utf8).write(to: url)
+    let library = try LibraryStore(file: url).load()
+    #expect(library.schemaVersion == Library.currentSchema)
+    #expect(library.settings.provider == .anthropic)
+    #expect(library.settings.model == "test-model")
+    #expect(library.settings.length == .short)
+    #expect(library.settings.selectedProjectID == nil)
+    #expect(library.settings.generateOnCapture == false)
+    #expect(library.settings.textSize == .standard)
+    #expect(library.settings.shortcut == .optionShiftR)
+    #expect(library.voiceNotes == "Keep it short.")
+    #expect(library.samples.map(\.text) == ["Happy to help."])
+    #expect(library.projects.first?.documents.first?.name == "README.md")
+
+    // Missing sections and values this version does not know fall back to defaults.
+    try Data(#"{"settings":{"provider":"some-future-provider","textSize":"Huge"}}"#.utf8).write(to: url)
+    let sparse = try LibraryStore(file: url).load()
+    #expect(sparse.settings.provider == .ollama)
+    #expect(sparse.settings.textSize == .standard)
+    #expect(sparse.samples.isEmpty)
+    #expect(sparse.projects.isEmpty)
+}
+
+@Test func libraryFromANewerVersionIsRefusedAndLeftUntouched() throws {
+    let directory = try fixtureDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("Library.json")
+    let newer = #"{"schemaVersion":99,"voiceNotes":"From the future"}"#
+    try Data(newer.utf8).write(to: url)
+    #expect(throws: LibraryStore.Failure.newerVersion(99)) { try LibraryStore(file: url).load() }
+    #expect(try String(contentsOf: url, encoding: .utf8) == newer)
+}
+
+@Test func newSettingsRoundTrip() throws {
+    let directory = try fixtureDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = LibraryStore(file: directory.appendingPathComponent("Library.json"))
+    var library = Library()
+    library.settings.length = .detailed
+    library.settings.selectedProjectID = UUID()
+    library.settings.generateOnCapture = true
+    library.settings.textSize = .larger
+    library.settings.shortcut = .controlOptionSpace
+    try store.save(library)
+    #expect(try store.load() == library)
+}
+
+@Test func draftSurvivesFailureAndCancelAndKeepsThePreviousOne() {
+    var draft = DraftState()
+    draft.text = "My edited draft"
+
+    // Failure after partial text puts the earlier draft back.
+    var token = draft.begin()
+    #expect(draft.isGenerating)
+    draft.showPartial("New rep", token: token)
+    #expect(draft.text == "New rep")
+    let failed = draft.fail(token: token)
+    #expect(failed)
+    #expect(draft.text == "My edited draft")
+    #expect(!draft.isGenerating)
+    #expect(draft.previous == nil)
+
+    // Cancel mid-stream does the same, and late updates are ignored.
+    token = draft.begin()
+    draft.showPartial("Half", token: token)
+    draft.cancel()
+    #expect(draft.text == "My edited draft")
+    draft.showPartial("Half a reply that arrives late", token: token)
+    let lateFinish = draft.finish("Late finish", token: token)
+    let lateFail = draft.fail(token: token)
+    #expect(!lateFinish)
+    #expect(!lateFail)
+    #expect(draft.text == "My edited draft")
+
+    // Cancel then regenerate: only the new generation's updates land.
+    let stale = draft.begin()
+    draft.cancel()
+    token = draft.begin()
+    draft.showPartial("stale", token: stale)
+    draft.showPartial("Fresh", token: token)
+    #expect(draft.text == "Fresh")
+    let finished = draft.finish("Fresh reply", token: token)
+    #expect(finished)
+    #expect(draft.text == "Fresh reply")
+    #expect(draft.previous == "My edited draft")
+    #expect(!draft.isGenerating)
+
+    // Swapping goes both ways.
+    draft.swapPrevious()
+    #expect(draft.text == "My edited draft")
+    #expect(draft.previous == "Fresh reply")
+    draft.swapPrevious()
+    #expect(draft.text == "Fresh reply")
+
+    // An identical or empty earlier draft is not kept.
+    token = draft.begin()
+    draft.finish("Fresh reply", token: token)
+    #expect(draft.previous == nil)
+
+    // Cancelling while idle changes nothing; reset clears everything.
+    draft.cancel()
+    #expect(draft.text == "Fresh reply")
+    token = draft.begin()
+    draft.reset()
+    #expect(draft.text.isEmpty)
+    #expect(draft.previous == nil)
+    #expect(!draft.isGenerating)
+    let afterReset = draft.finish("ignored", token: token)
+    #expect(!afterReset)
+    #expect(draft.text.isEmpty)
+}
+
+@Test func draftDemoFlagFollowsTheDraft() {
+    var draft = DraftState()
+    var token = draft.begin()
+    draft.finish("Simulated", isDemo: true, token: token)
+    #expect(draft.isDemo)
+    token = draft.begin()
+    draft.showPartial("Real", token: token)
+    #expect(!draft.isDemo)
+    draft.fail(token: token)
+    #expect(draft.isDemo)
+    #expect(draft.text == "Simulated")
 }

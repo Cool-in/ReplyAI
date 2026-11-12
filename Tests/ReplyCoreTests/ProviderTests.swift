@@ -197,22 +197,26 @@ func streamParserCollectsOnlyReplyText(_ provider: Provider) throws {
 @Test func streamParserReportsTruncationCutoffsAndProviderErrors() throws {
     var cutOff = ReplyStream(provider: .openAI)
     _ = try cutOff.consume(#"data: {"type":"response.output_text.delta","delta":"Partial"}"#)
-    #expect(throws: GenerationError.incomplete) { try cutOff.finish() }
+    #expect(throws: GenerationError.connectionLost) { try cutOff.finish() }
 
     var openAI = ReplyStream(provider: .openAI)
     _ = try openAI.consume(#"data: {"type":"response.output_text.delta","delta":"Partial"}"#)
     _ = try openAI.consume(#"data: {"type":"response.incomplete","response":{"status":"incomplete"}}"#)
-    #expect(throws: GenerationError.incomplete) { try openAI.finish() }
+    #expect(throws: GenerationError.cutShort("Partial")) { try openAI.finish() }
+
+    var nothing = ReplyStream(provider: .openAI)
+    _ = try nothing.consume(#"data: {"type":"response.incomplete","response":{"status":"incomplete"}}"#)
+    #expect(throws: GenerationError.incomplete) { try nothing.finish() }
 
     var claude = ReplyStream(provider: .anthropic)
     _ = try claude.consume(#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Partial"}}"#)
     _ = try claude.consume(#"data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}"#)
     _ = try claude.consume(#"data: {"type":"message_stop"}"#)
-    #expect(throws: GenerationError.incomplete) { try claude.finish() }
+    #expect(throws: GenerationError.cutShort("Partial")) { try claude.finish() }
 
     var ollama = ReplyStream(provider: .ollama)
     _ = try ollama.consume(#"{"message":{"content":"Partial"},"done":true,"done_reason":"length"}"#)
-    #expect(throws: GenerationError.incomplete) { try ollama.finish() }
+    #expect(throws: GenerationError.cutShort("Partial")) { try ollama.finish() }
 
     var empty = ReplyStream(provider: .ollama)
     _ = try empty.consume(#"{"message":{"content":"  "},"done":true,"done_reason":"stop"}"#)
