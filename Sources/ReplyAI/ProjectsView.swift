@@ -112,14 +112,11 @@ struct ProjectsView: View {
         .confirmationDialog("Remove this snapshot from the project?", isPresented: Binding(
             get: { removing != nil },
             set: { if !$0 { removing = nil } }
-        )) {
+        ), presenting: removing) { doc in
             Button("Remove Snapshot", role: .destructive) {
-                if let index, let doc = removing {
-                    model.library.projects[index].documents.removeAll { $0.id == doc.id }
-                }
-                removing = nil
+                if let index { model.library.projects[index].documents.removeAll { $0.id == doc.id } }
             }
-        } message: {
+        } message: { _ in
             Text("The original file on disk is not touched. This can’t be undone.")
         }
         .sheet(item: $importBatch) { batch in

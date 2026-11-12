@@ -43,6 +43,7 @@ final class AppModel {
     /// Set by the app delegate. Re-registers the global shortcut and returns the registration status.
     var applyShortcut: ((ShortcutPreset) -> Int32)?
     private var exampleLoaded = false
+    private var pendingFromCapture = false
     private var request: Task<Void, Never>?
     private var pendingSave: Task<Void, Never>?
     private var dirty = false
@@ -173,6 +174,7 @@ final class AppModel {
 
     func acceptSelection(_ text: String) {
         section = .reply
+        pendingFromCapture = false
         if text == source {
             pendingSource = nil
             return
@@ -187,16 +189,34 @@ final class AppModel {
     /// Text captured from another app. Starts drafting straight away when the user has opted in
     /// and nothing needs confirming first.
     func acceptCapture(_ text: String) {
+        let auto = library.settings.generateOnCapture
         let fresh = text != source
-        acceptSelection(text)
-        if fresh, library.settings.generateOnCapture, pendingSource == nil, source == text, hasConfiguredModel {
+        // With drafting on capture switched on, a reply that was copied and not touched since is done:
+        // move straight on to the new selection instead of asking.
+        if auto, fresh, copied, !isGenerating {
+            replaceSource(text)
+        } else {
+            acceptSelection(text)
+        }
+        if pendingSource != nil {
+            pendingFromCapture = true
+        } else if auto, fresh, source == text, hasConfiguredModel {
             generate()
         }
+    }
+
+    /// The user chose Replace. A captured selection then drafts straight away if they opted in.
+    func confirmPendingSource() {
+        guard let text = pendingSource else { return }
+        let auto = pendingFromCapture && library.settings.generateOnCapture
+        replaceSource(text)
+        if auto, hasConfiguredModel { generate() }
     }
 
     func replaceSource(_ text: String) {
         cancel()
         exampleLoaded = false
+        pendingFromCapture = false
         source = text
         brief = ""
         draftState.reset()

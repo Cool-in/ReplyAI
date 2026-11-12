@@ -1,4 +1,5 @@
 import AppKit
+import ReplyCore
 import SwiftUI
 
 struct RootView: View {
@@ -66,7 +67,7 @@ struct RootView: View {
         )) {
             Button("Keep Current", role: .cancel) { model.pendingSource = nil }
             Button("Replace", role: .destructive) {
-                if let text = model.pendingSource { model.replaceSource(text) }
+                model.confirmPendingSource()
             }
         } message: {
             Text("The new selection will replace the comment, brief, and current draft.")

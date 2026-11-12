@@ -59,6 +59,7 @@ struct MenuActions: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let quickReply = QuickReplyController()
     private let selectionShortcut = SelectionShortcut()
+    private var capturing = false
 
     func showQuickReply() { quickReply.show() }
 
@@ -68,8 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = AppModel.shared
         model.shortcutRegistrationStatus = selectionShortcut.start(model.library.settings.shortcut) { [weak self] in
             Task { @MainActor [weak self] in
+                // One capture at a time: a second press mid-capture would snapshot the wrong clipboard.
+                guard let self, !self.capturing else { return }
+                self.capturing = true
+                defer { self.capturing = false }
                 let capture = await SelectionCapture.focusedText()
-                self?.quickReply.show(capture)
+                self.quickReply.show(capture)
             }
         }
         if let status = model.shortcutRegistrationStatus, status != 0 {

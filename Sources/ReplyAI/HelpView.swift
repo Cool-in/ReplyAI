@@ -1,3 +1,4 @@
+import ReplyCore
 import SwiftUI
 
 struct HelpView: View {

@@ -71,8 +71,12 @@ struct DeskTextEditor: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: DeskTextEditor
+        // Each editor keeps its own undo history, so clearing one never touches the others.
+        private let undo = UndoManager()
 
         init(parent: DeskTextEditor) { self.parent = parent }
+
+        func undoManager(for view: NSTextView) -> UndoManager? { undo }
 
         func textDidChange(_ notification: Notification) {
             guard let editor = notification.object as? NSTextView, !editor.hasMarkedText() else { return }

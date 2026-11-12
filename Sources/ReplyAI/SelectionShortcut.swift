@@ -12,12 +12,16 @@ enum SelectionCapture: Equatable {
     /// Reads the selection through accessibility. Many browsers and Electron apps do not expose
     /// selected text that way, so when that comes back empty this falls back to copying it.
     @MainActor static func focusedText() async -> Self {
-        let direct = accessibleSelection()
+        let (direct, readable) = accessibleSelection()
         switch direct {
         case .selected, .needsPermission:
             return direct
         case .noSelection, .unavailable:
-            guard !focusIsSecureField(), let text = await copiedSelection() else { return direct }
+            // Fall back only when the app gave no usable answer. If it reported "nothing selected",
+            // believe it: a blind Copy there beeps, or copies a whole line or a file name.
+            // Never fall back into a password field, or while one of our own windows has the keyboard.
+            guard !readable, NSApp.keyWindow == nil, !IsSecureEventInputEnabled(), !focusIsSecureField(),
+                  let text = await copiedSelection() else { return direct }
             return .selected(text)
         }
     }
@@ -37,6 +41,7 @@ enum SelectionCapture: Equatable {
         guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return false }
         let element = value as! AXUIElement
+        AXUIElementSetMessagingTimeout(element, 0.25)
         var subrole: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)
         return subrole as? String == kAXSecureTextFieldSubrole
@@ -49,7 +54,7 @@ enum SelectionCapture: Equatable {
         let saved: [NSPasteboardItem] = (pasteboard.pasteboardItems ?? []).map { item in
             let copy = NSPasteboardItem()
             for type in item.types {
-                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+                if let data = item.data(forType: type) { _ = copy.setData(data, forType: type) }
             }
             return copy
         }
@@ -63,48 +68,51 @@ enum SelectionCapture: Equatable {
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
 
-        var text: String?
-        for _ in 0..<16 {
+        // Slow apps can take a while to answer Copy. Wait up to a second, leaving as soon as it lands.
+        var copied: String?
+        for _ in 0..<40 {
             try? await Task.sleep(for: .milliseconds(25))
             if pasteboard.changeCount != before {
-                text = pasteboard.string(forType: .string)
+                copied = pasteboard.string(forType: .string)
                 break
             }
         }
         if pasteboard.changeCount != before {
             pasteboard.clearContents()
-            if !saved.isEmpty { pasteboard.writeObjects(saved) }
+            if !saved.isEmpty { _ = pasteboard.writeObjects(saved) }
         }
-        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return text
+        guard let copied, !copied.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return copied
     }
 
-    @MainActor private static func accessibleSelection() -> Self {
-        guard AXIsProcessTrusted() else { return .needsPermission }
+    /// The selection as accessibility reports it. `readable` is true when the focused control
+    /// answered the selected-text question, so an empty answer can be trusted.
+    @MainActor private static func accessibleSelection() -> (result: Self, readable: Bool) {
+        guard AXIsProcessTrusted() else { return (.needsPermission, true) }
         guard let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return .noSelection }
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return (.noSelection, true) }
 
         let application = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(application, 0.25)
         var value: CFTypeRef?
         let focus = AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value)
         guard focus == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
-            return focus == .noValue ? .noSelection : .unavailable
+            return (focus == .noValue ? Self.noSelection : Self.unavailable, false)
         }
 
         let element = value as! AXUIElement
         AXUIElementSetMessagingTimeout(element, 0.25)
         var subrole: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)
-        guard subrole as? String != kAXSecureTextFieldSubrole else { return .unavailable }
+        guard subrole as? String != kAXSecureTextFieldSubrole else { return (.unavailable, true) }
 
         var selected: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selected)
-        if result == .noValue { return .noSelection }
-        guard result == .success else { return .unavailable }
+        if result == .noValue { return (.noSelection, true) }
+        guard result == .success else { return (.unavailable, false) }
         guard let text = selected as? String,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .noSelection }
-        return .selected(text)
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return (.noSelection, true) }
+        return (.selected(text), true)
     }
 
     @MainActor static func requestAccess() {

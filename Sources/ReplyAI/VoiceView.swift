@@ -68,12 +68,11 @@ struct VoiceView: View {
         .confirmationDialog("Remove this writing sample?", isPresented: Binding(
             get: { removing != nil },
             set: { if !$0 { removing = nil } }
-        )) {
+        ), presenting: removing) { sample in
             Button("Remove Sample", role: .destructive) {
-                if let sample = removing { model.library.samples.removeAll { $0.id == sample.id } }
-                removing = nil
+                model.library.samples.removeAll { $0.id == sample.id }
             }
-        } message: {
+        } message: { _ in
             Text("This can’t be undone.")
         }
         .sheet(item: $editor) { sample in

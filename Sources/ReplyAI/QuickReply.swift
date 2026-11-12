@@ -1,4 +1,5 @@
 import AppKit
+import ReplyCore
 import SwiftUI
 
 @MainActor
@@ -295,7 +296,7 @@ private struct QuickReplyView: View {
                 Spacer()
                 Button("Keep Current") { model.pendingSource = nil }.buttonStyle(DeskButton())
                 Button("Replace") {
-                    model.replaceSource(text)
+                    model.confirmPendingSource()
                     capture = nil
                 }
                 .buttonStyle(DeskButton(kind: .primary))
