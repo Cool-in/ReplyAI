@@ -45,7 +45,7 @@ struct RootView: View {
                     .animation(.easeOut(duration: 0.18), value: model.section)
                     .frame(maxWidth: model.section == .reply ? 1060 : 780, alignment: .leading)
                     .padding(.horizontal, margin)
-                    .padding(.top, 52)
+                    .padding(.top, 12)
                     .padding(.bottom, 32)
                     .frame(maxWidth: .infinity)
                 }
@@ -53,6 +53,7 @@ struct RootView: View {
             }
         }
         .background(desk.canvas)
+        .background(WindowDragEnabler())
         .foregroundStyle(desk.text)
         .tint(desk.violet)
         .environment(\.desk, desk)
@@ -124,7 +125,7 @@ private struct DeskRail: View {
             .padding(.horizontal, 4)
         }
         .padding(.horizontal, 14)
-        .padding(.top, 57)
+        .padding(.top, 16)
         .padding(.bottom, 25)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(desk.sidebar)
