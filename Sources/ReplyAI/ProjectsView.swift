@@ -11,6 +11,7 @@ struct ProjectsView: View {
     @State private var deleting = false
     @State private var importBatch: ImportBatch?
     @State private var document: ProjectDocument?
+    @State private var removing: ProjectDocument?
     @Environment(\.desk) private var desk
 
     private var index: Int? { model.library.projects.firstIndex { $0.id == projectID } }
@@ -72,7 +73,7 @@ struct ProjectsView: View {
                                     Spacer(minLength: 0)
                                     Button("View Snapshot") { document = doc }.buttonStyle(DeskButton())
                                     Button("Remove", systemImage: "trash", role: .destructive) {
-                                        if let index { model.library.projects[index].documents.removeAll { $0.id == doc.id } }
+                                        removing = doc
                                     }
                                     .labelStyle(.iconOnly).buttonStyle(DeskButton(kind: .quiet))
                                     .help("Remove snapshot")
@@ -107,6 +108,19 @@ struct ProjectsView: View {
                 if model.selectedProjectID == projectID { model.selectedProjectID = nil }
                 projectID = model.library.projects.first?.id
             }
+        }
+        .confirmationDialog("Remove this snapshot from the project?", isPresented: Binding(
+            get: { removing != nil },
+            set: { if !$0 { removing = nil } }
+        )) {
+            Button("Remove Snapshot", role: .destructive) {
+                if let index, let doc = removing {
+                    model.library.projects[index].documents.removeAll { $0.id == doc.id }
+                }
+                removing = nil
+            }
+        } message: {
+            Text("The original file on disk is not touched. This can’t be undone.")
         }
         .sheet(item: $importBatch) { batch in
             ImportReview(batch: batch) { approved in
@@ -187,7 +201,7 @@ private struct ImportReview: View {
                 VStack(alignment: .leading, spacing: 15) {
                     ForEach(batch.errors.indices, id: \.self) { index in
                         Label(batch.errors[index], systemImage: "exclamationmark.circle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(desk.danger)
                     }
                     ForEach(documents) { doc in
                         HStack {

@@ -57,6 +57,9 @@ struct DeskTextEditor: NSViewRepresentable {
         if editor.string != text, !editor.hasMarkedText() {
             let selection = editor.selectedRange()
             editor.string = text
+            // Text set by the app (a new draft, Paste, Clear) is not something Undo can replay:
+            // the old actions point at ranges that no longer exist.
+            editor.undoManager?.removeAllActions()
             let length = (text as NSString).length
             let start = min(selection.location, length)
             editor.setSelectedRange(NSRange(location: start, length: min(selection.length, length - start)))
@@ -91,6 +94,15 @@ private final class FocusTextView: NSTextView {
         let accepted = super.resignFirstResponder()
         if accepted { focusChanged?(false) }
         return accepted
+    }
+
+    // Tab moves between fields, as it does everywhere else on the Mac, instead of typing a tab.
+    override func insertTab(_ sender: Any?) {
+        window?.selectNextKeyView(self)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        window?.selectPreviousKeyView(self)
     }
 }
 

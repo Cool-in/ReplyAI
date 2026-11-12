@@ -9,6 +9,6 @@ Product and architecture plan by Astra. Implementation by Sol 6.1.
 3. Share prompt assembly and a provider interface across OpenAI, Anthropic, and local Ollama. Store API keys in Keychain. Keep source content local until the user requests a draft. Preserve the previous draft when a provider call fails.
 4. Package the SwiftPM executable as a Mac app and verify it against one native Services host, the paste fallback, the fictional demo, library persistence, and mocked requests to all three providers.
 
-A universal shortcut, browser extension, account syncing, history ingestion, and automatic publishing are outside v0. Claude Code and Codex project context means local documents the user selects.
+A browser extension, account syncing, history ingestion, and automatic publishing are outside v0. The global shortcut shipped after this plan was written. Claude Code and Codex project context means local documents the user selects.
 
 References: [Apple Services bundle keys](https://developer.apple.com/documentation/bundleresources/information-property-list/nsservices), [providing a Service](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/SysServices/Articles/providing.html), [Claude Code memory](https://code.claude.com/docs/en/memory), [OpenAI Responses](https://platform.openai.com/docs/api-reference/responses), [Claude Messages](https://platform.claude.com/docs/en/api/messages/create), and [Ollama chat](https://docs.ollama.com/api/chat).

@@ -4,6 +4,7 @@ import ReplyCore
 struct VoiceView: View {
     @Bindable var model: AppModel
     @State private var editor: VoiceSample?
+    @State private var removing: VoiceSample?
     @Environment(\.desk) private var desk
 
     var body: some View {
@@ -52,7 +53,7 @@ struct VoiceView: View {
                                     .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
                                 Button("Edit") { editor = sample }.buttonStyle(DeskButton())
                                 Button("Remove", systemImage: "trash", role: .destructive) {
-                                    model.library.samples.removeAll { $0.id == sample.id }
+                                    removing = sample
                                 }
                                 .labelStyle(.iconOnly)
                                 .buttonStyle(DeskButton(kind: .quiet))
@@ -63,6 +64,17 @@ struct VoiceView: View {
                     }
                 }
             }
+        }
+        .confirmationDialog("Remove this writing sample?", isPresented: Binding(
+            get: { removing != nil },
+            set: { if !$0 { removing = nil } }
+        )) {
+            Button("Remove Sample", role: .destructive) {
+                if let sample = removing { model.library.samples.removeAll { $0.id == sample.id } }
+                removing = nil
+            }
+        } message: {
+            Text("This can’t be undone.")
         }
         .sheet(item: $editor) { sample in
             SampleEditor(sample: sample) { value in

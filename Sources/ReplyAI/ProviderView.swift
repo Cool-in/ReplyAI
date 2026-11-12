@@ -110,7 +110,46 @@ struct ProviderView: View {
             }
             if let notice {
                 Label(notice, systemImage: failed ? "exclamationmark.circle" : "checkmark.circle")
-                    .foregroundStyle(failed ? .red : .secondary)
+                    .foregroundStyle(failed ? AnyShapeStyle(desk.danger) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
+            }
+
+            Panel {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        DeskGlyph(symbol: "keyboard")
+                        Text("Capture and reading").font(.system(size: 16, weight: .semibold))
+                    }
+                    HStack {
+                        Text("Global shortcut")
+                        Spacer(minLength: 0)
+                        Picker("Global shortcut", selection: $model.library.settings.shortcut) {
+                            ForEach(ShortcutPreset.allCases) { preset in
+                                Text(preset.title).tag(preset).accessibilityLabel(preset.spoken)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    if let status = model.shortcutRegistrationStatus, status != 0 {
+                        Label("This shortcut couldn’t register. Another app may be using it. Pick a different one.",
+                              systemImage: "exclamationmark.circle")
+                            .font(.callout).foregroundStyle(desk.danger)
+                    }
+                    Toggle("Start drafting as soon as text is captured", isOn: $model.library.settings.generateOnCapture)
+                    Text("Applies to the shortcut and the Services menu. It never replaces a reply you are working on without asking.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Rectangle().fill(desk.line).frame(height: 1).padding(.vertical, 3)
+                    HStack {
+                        Text("Editor text size")
+                        Spacer(minLength: 0)
+                        Picker("Editor text size", selection: $model.library.settings.textSize) {
+                            ForEach(EditorTextSize.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
             }
 
             HStack(alignment: .top, spacing: 11) {
@@ -134,6 +173,9 @@ struct ProviderView: View {
             key = ""
             notice = nil
             model.checkKey()
+        }
+        .onChange(of: model.library.settings.shortcut) { _, preset in
+            if let apply = model.applyShortcut { model.shortcutRegistrationStatus = apply(preset) }
         }
         .confirmationDialog("Remove the saved API key?", isPresented: $removing) {
             Button("Remove Key", role: .destructive) {

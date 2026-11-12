@@ -21,9 +21,17 @@ struct RootView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         if let error = model.storageError {
-                            Label(error, systemImage: "externaldrive.badge.exclamationmark")
-                                .font(.callout)
-                                .foregroundStyle(.red)
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Label(error, systemImage: "externaldrive.badge.exclamationmark")
+                                    .font(.callout)
+                                    .foregroundStyle(desk.danger)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                if model.libraryFile != nil {
+                                    Button("Show in Finder") { model.revealLibrary() }
+                                        .buttonStyle(DeskButton())
+                                }
+                            }
                         }
                         switch model.section ?? .reply {
                         case .reply: ComposerView(model: model, wide: contentWidth >= 670)
@@ -47,6 +55,7 @@ struct RootView: View {
         .foregroundStyle(desk.text)
         .tint(desk.violet)
         .environment(\.desk, desk)
+        .environment(\.deskTextScale, CGFloat(model.library.settings.textSize.scale))
         .onAppear {
             model.showWindow = { openWindow(id: "composer") }
         }

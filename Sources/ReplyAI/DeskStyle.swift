@@ -24,6 +24,8 @@ struct DeskPalette {
     var accentTop: Color { ink(dark ? 0xB3A4FF : 0x6B55EA) }
     var accentButton: Color { ink(dark ? 0x9584FF : 0x4F34D6) }
     var onAccent: Color { ink(dark ? 0x170F2E : 0xFFFFFF) }
+    /// Error text. Darker than system red on cream so it stays readable at small sizes.
+    var danger: Color { ink(dark ? 0xFF9A8F : 0xB3261E) }
 }
 
 /// The font used in the text editors. The draft is set in serif; everything else uses the system face.
@@ -35,6 +37,8 @@ func deskEditorFont(size: CGFloat, serif: Bool) -> NSFont {
 
 extension EnvironmentValues {
     @Entry var desk = DeskPalette()
+    /// Multiplier for text in the editors, from the Editor text size setting.
+    @Entry var deskTextScale: CGFloat = 1
 }
 
 struct Eyebrow: View {
@@ -187,17 +191,19 @@ struct WritingField: View {
     var serif = false
     @State private var focused = false
     @Environment(\.desk) private var desk
+    @Environment(\.deskTextScale) private var scale
 
     var body: some View {
+        let points = size * scale
         ZStack(alignment: .topLeading) {
-            DeskTextEditor(text: $text, label: label, font: deskEditorFont(size: size, serif: serif),
+            DeskTextEditor(text: $text, label: label, font: deskEditorFont(size: points, serif: serif),
                            textColor: NSColor(desk.text), caretColor: NSColor(desk.violet),
-                           lineSpacing: serif ? size * 0.42 : 4) {
+                           lineSpacing: serif ? points * 0.42 : 4) {
                 focused = $0
             }
             if text.isEmpty && !placeholder.isEmpty {
                 Text(placeholder)
-                    .font(.system(size: size, design: serif ? .serif : .default))
+                    .font(.system(size: points, design: serif ? .serif : .default))
                     .foregroundStyle(desk.muted)
                     .padding(.horizontal, 5)
                     .allowsHitTesting(false)

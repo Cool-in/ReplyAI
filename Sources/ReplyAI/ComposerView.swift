@@ -89,7 +89,7 @@ struct ComposerView: View {
 
                 if model.source.count > ReplyPrompt.maxSource || model.brief.count > ReplyPrompt.maxNotes {
                     Text("Limit: 6,000 characters for the comment and 1,000 for the brief.")
-                        .font(.caption).foregroundStyle(.red)
+                        .font(.caption).foregroundStyle(desk.danger)
                 }
 
                 Spacer(minLength: 0)
@@ -193,7 +193,7 @@ struct ComposerView: View {
             if let error = model.errorMessage {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(desk.danger)
                     .accessibilityAddTraits(.updatesFrequently)
             }
         }

@@ -8,7 +8,7 @@ final class QuickReplyController {
 
     func show(_ capture: SelectionCapture? = nil) {
         model.isOverlayVisible = true
-        if case .selected(let text) = capture { model.acceptSelection(text) }
+        if case .selected(let text) = capture { model.acceptCapture(text) }
         let panel = panel ?? makePanel()
         panel.contentView = NSHostingView(rootView: QuickReplyView(
             model: model,
@@ -124,7 +124,7 @@ private struct QuickReplyView: View {
                         draft
                         if let error = model.errorMessage {
                             Label(error, systemImage: "exclamationmark.circle")
-                                .foregroundStyle(.red).font(.callout)
+                                .foregroundStyle(desk.danger).font(.callout)
                                 .accessibilityAddTraits(.updatesFrequently)
                         }
                     }
@@ -139,7 +139,10 @@ private struct QuickReplyView: View {
         .foregroundStyle(desk.text)
         .tint(desk.violet)
         .environment(\.desk, desk)
+        .environment(\.deskTextScale, CGFloat(model.library.settings.textSize.scale))
         .onChange(of: model.draft) { _, _ in model.copied = false }
+        // Length and project can change here while the main window is closed, so save from here too.
+        .onChange(of: model.library) { _, _ in model.save() }
         .onChange(of: model.pendingSource != nil) { _, pending in
             reviewing = false
             resize(pending)
@@ -219,11 +222,15 @@ private struct QuickReplyView: View {
                             .buttonStyle(DeskButton(kind: .quiet))
                             .help("Swap back to the draft from before the last generation")
                     }
-                    Button(model.copied ? "Copied" : "Copy Draft", systemImage: model.copied ? "checkmark" : "doc.on.doc") {
+                    // One step to finish: the draft goes to the clipboard and the panel gets out of the way.
+                    Button("Copy and Close", systemImage: "doc.on.doc") {
                         model.copyDraft()
+                        if model.copied { close() }
                     }
                     .buttonStyle(DeskButton(kind: .tinted))
-                    .disabled(!model.hasDraft)
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .disabled(!model.hasDraft || model.isGenerating)
+                    .help("Copy the draft and close Quick Reply (⇧⌘C)")
                 }
                 WritingField(text: $model.draft, placeholder: "Your reply will appear here. You can also start writing.",
                              label: "Editable draft", height: 112, onPaper: true, size: 16, serif: true)

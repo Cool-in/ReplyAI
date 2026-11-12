@@ -25,15 +25,15 @@ struct HelpView: View {
                     step("02", title: "Highlight the comment") {
                         Text("With ReplyAI running, select the text in the other app. Choose Services → Draft Reply with ReplyAI to open Quick Reply.")
                         HStack(spacing: 9) {
-                            Text("⌥ ⇧ R").font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            Text(model.library.settings.shortcut.title).font(.system(size: 14, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(desk.violet)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                 .background(desk.wash, in: RoundedRectangle(cornerRadius: 6))
-                                .accessibilityLabel("Option Shift R")
+                                .accessibilityLabel(model.library.settings.shortcut.spoken)
                             Text("Global shortcut").font(.system(size: 12, weight: .semibold))
                         }
                         if let status = model.shortcutRegistrationStatus, status != 0 {
-                            Label("This shortcut couldn’t register on this Mac. Use Services or Paste.", systemImage: "exclamationmark.circle")
+                            Label("This shortcut couldn’t register on this Mac. Choose another in Settings, or use Services or Paste.", systemImage: "exclamationmark.circle")
                         } else {
                             Text("Shortcut capture needs Accessibility access. If asked, choose Enable Selection Access and retry from the other app.")
                         }
